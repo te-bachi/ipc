@@ -8,11 +8,13 @@
 void setupSignals();
 void signalHandler(int sig);
 
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[]) {
+    
+    setDebugLevel(INFO);
     
     setupSignals();
-    debug("Display (%d)\n", getpid());
-    sleep(3);
+    debug(INFO, "Display (%d)", getpid());
+    sleep(2);
     
     return 0;
 }
@@ -38,7 +40,7 @@ void signalHandler(int sigNo) {
            break;
            
        case SIGUSR1:
-           debug("Display Shutdown (%d)\n", getpid());
+           debug(DEBUG, "Display Shutdown (%d)", getpid());
            exit(0);
            break;
    }

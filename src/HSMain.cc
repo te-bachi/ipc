@@ -14,24 +14,30 @@
 #define PROG_DISPLAY "./HSDisplay.e"
 #define PROG_CONTROL "./HSControl.e"
 
+// Main Funktionen
+void setupSignals();
+void signalHandler(int sigNo);
+void shutdown();
+
 // Threads
 void* processThread(void* param);
 void* socketThread(void* param);
 
 // Funktionen für Process Thread
-void shutdown();
-void createProcess(pid_t* pid, const char* path, char* const argv[]);
-void createDisplayProcess(pid_t* displayPid, char* nSensors);
-void createControlProcess(pid_t* controlPid, char* nSensors, pid_t displayPid);
+void createProcess(pid_t *pid, const char *path, char *const argv[]);
+void createDisplayProcess(pid_t *displayPid, char *nSensors);
+void createControlProcess(pid_t *controlPid, char *nSensors, pid_t displayPid);
 
 // Funktionen für Socket Thread
 
 // Globale Variablen
 bool running;
 
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[]) {
     pthread_t procThread;
     pthread_t sockThread;
+    
+    setDebugLevel(INFO);
     
     // Nicht genug Argumente
     if (argc < 2) {
@@ -45,6 +51,7 @@ int main(int argc, char* argv[]) {
     }
     
     running = true;
+    setupSignals();
     
     pthread_create(&procThread, NULL, processThread, argv[1]);
     pthread_create(&sockThread, NULL, socketThread, argv[1]);
@@ -52,49 +59,76 @@ int main(int argc, char* argv[]) {
     pthread_join(procThread, NULL);
     pthread_join(sockThread, NULL);
     
-    printf("Shutdown!\n");
-    
     return EX_OK;
 }
 
-void* processThread(void* param) {
+void setupSignals() {
+   struct sigaction action;
+
+   action.sa_handler = signalHandler;
+   action.sa_flags = SA_RESTART;
+   sigemptyset(&action.sa_mask);
+   sigaction(SIGINT, &action, NULL);
+   sigaction(SIGTERM, &action, NULL);
+   sigaction(SIGUSR1, &action, NULL);
+}
+
+void signalHandler(int sigNo) {
+   switch (sigNo) {
+       case SIGINT:
+       case SIGTERM:
+           shutdown();
+           break;
+   }
+}
+
+void *processThread(void *param) {
     pid_t displayPid;
     pid_t oldDisplayPid;
     pid_t controlPid;
     pid_t returnPid;
-    char* nSignals;
+    char *nSignals;
+    int   status;
     
-    nSignals = (char*) param;
+    nSignals = (char *) param;
     
     createDisplayProcess(&displayPid, nSignals);
     createControlProcess(&controlPid, nSignals, displayPid);
     
     while (running) {
         // Warten auf alle Kinder
-        returnPid = waitpid(-1, NULL, 0);
-        if (returnPid == controlPid) {
-            kill(displayPid, SIGUSR1);
-            oldDisplayPid = displayPid;
-            createDisplayProcess(&displayPid, nSignals);
-            createControlProcess(&controlPid, nSignals, displayPid);
-        } else if (returnPid == displayPid) {
-            createDisplayProcess(&displayPid, nSignals);
-        } else if (returnPid == oldDisplayPid) {
-            debug("Parent catched old Display PID (%d)\n", returnPid);
+        returnPid = waitpid(-1, &status, 0);
+        if (status != 0) {
+            debug(FATAL, "Status from child < 0: Exit!");
+            shutdown();
         } else {
-            fprintf(stderr, "Unknow child with PID %d: Exit!\n", returnPid);
+            if (returnPid == controlPid) {
+                kill(displayPid, SIGUSR1);
+                oldDisplayPid = displayPid;
+                createDisplayProcess(&displayPid, nSignals);
+                createControlProcess(&controlPid, nSignals, displayPid);
+            } else if (returnPid == displayPid) {
+                createDisplayProcess(&displayPid, nSignals);
+            } else if (returnPid == oldDisplayPid) {
+                debug(DEBUG, "Parent catched old Display PID (%d)\n", returnPid);
+            } else {
+                fprintf(stderr, "Unknow child with PID %d: Exit!\n", returnPid);
+            }
         }
     }
     
-    debug("Kill PID %d\n", displayPid);
+    debug(DEBUG, "Kill PID %d\n", displayPid);
     kill(displayPid, SIGUSR1);
-    debug("Kill PID %d\n", controlPid);
+    debug(DEBUG, "Kill PID %d\n", controlPid);
     kill(controlPid, SIGUSR1);
+    
+    waitpid(displayPid, NULL, 0);
+    waitpid(controlPid, NULL, 0);
     
     return NULL;
 }
 
-void* socketThread(void* param) {
+void *socketThread(void *param) {
     
     while (running) {
         
@@ -104,12 +138,14 @@ void* socketThread(void* param) {
 }
 
 void shutdown() {
+    debugNewLine();
+    debug(INFO, "Shutdown");
     running = false;
 }
 
-void createDisplayProcess(pid_t* displayPid, char* nSensors) {
-    char* path = (char*) PROG_DISPLAY;
-    char* argv[3];
+void createDisplayProcess(pid_t *displayPid, char *nSensors) {
+    char *path = (char *) PROG_DISPLAY;
+    char *argv[3];
     
     argv[0] = path;
     argv[1] = nSensors;
@@ -118,10 +154,10 @@ void createDisplayProcess(pid_t* displayPid, char* nSensors) {
     createProcess(displayPid, path, argv);
 }
 
-void createControlProcess(pid_t* controlPid, char* nSensors, pid_t displayPid) {
-    char* path = (char*) PROG_CONTROL;
+void createControlProcess(pid_t *controlPid, char *nSensors, pid_t displayPid) {
+    char *path = (char *) PROG_CONTROL;
     char  pidStr[255];
-    char* argv[4];
+    char *argv[4];
     
     snprintf(pidStr, sizeof(pidStr), "%d", displayPid);
     
@@ -134,13 +170,13 @@ void createControlProcess(pid_t* controlPid, char* nSensors, pid_t displayPid) {
 }
 
 /**
- * Erstellt einen Prozess mit gegebenem Pfad
+ * Erstellt einen Prozess und führt den Pfad aus
  *
  * @param pid Gibt PID zurück
  * @param path Führt den Pfad aus
  * @param argv Argumente Liste für die Ausführung
  */
-void createProcess(pid_t* pid, const char* path, char* const argv[]) {
+void createProcess(pid_t *pid, const char *path, char *const argv[]) {
     
 #if DEBUG_MORE
     int i;
@@ -157,14 +193,14 @@ void createProcess(pid_t* pid, const char* path, char* const argv[]) {
     switch (*pid) {
         // Fehler
         case -1:
-            fprintf(stderr, "Can't fork: %s\n", strerror(errno));
+            debug(FATAL, "Can't fork: %s\n", strerror(errno));
             shutdown();
             break;
             
         // Kind
         case 0:
             if (execv(path, argv) < 0) {
-                fprintf(stderr, "Can't change image: %s\n", strerror(errno));
+                debug(FATAL, "Can't change image: %s", strerror(errno));
                 exit(EX_OSERR);
             }
             break;

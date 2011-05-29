@@ -8,11 +8,13 @@
 void setupSignals();
 void signalHandler(int sig);
 
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[]) {
+    
+    setDebugLevel(INFO);
     
     setupSignals();
-    debug("Control (%d)\n", getpid());
-    sleep(6);
+    debug(INFO, "Control (%d)", getpid());
+    sleep(7);
     
     return 0;
 }

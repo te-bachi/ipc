@@ -6,7 +6,10 @@
 
 #include "Utils.h"
 
-bool isnumber(char* str) {
+DebugLevel currentLevel = NONE;
+FILE *debugStream = stderr;
+
+bool isnumber(char *str) {
     int i;
     for (i = 0; str[i] != '\0'; i++) {
         if (isdigit(str[i]) == false) {
@@ -15,18 +18,37 @@ bool isnumber(char* str) {
     }
     return true;
 }
-       
-int debug(const char *format, ...) {
-#if DEBUG
-    int     retVal;
-    va_list args;
 
-    va_start(args, format);
-    printf("[DEBUG] [%5d] ", getpid());
-    retVal = vprintf(format, args);
-    va_end(args);
+void setDebugStream(FILE *stream) {
+    debugStream = stream;
+}
+
+void setDebugLevel(DebugLevel level) {
+    currentLevel = level;
+}
+
+void debugNewLine() {
+    fprintf(debugStream, "\n");
+}
+
+int debug(DebugLevel level, const char *format, ...) {
+    int     retVal = 0;
+    va_list args;
+    
+    if (level <= currentLevel) {
+        va_start(args, format);
+        if      (level == FATAL) fprintf(debugStream, "[FATAL] ");
+        else if (level == ERROR) fprintf(debugStream, "[ERROR] ");
+        else if (level == WARN)  fprintf(debugStream, "[WARN ] ");
+        else if (level == INFO)  fprintf(debugStream, "[INFO ] ");
+        else if (level == DEBUG) fprintf(debugStream, "[DEBUG] ");
+        fprintf(debugStream, "[%5d] ", getpid());
+        retVal = vfprintf(debugStream, format, args);
+        fprintf(debugStream, "\n");
+        fflush(debugStream);
+        va_end(args);
+    }
     
     return retVal;
-#endif
 }
 
