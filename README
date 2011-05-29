@@ -3,7 +3,9 @@ Root
  +-- doc                Dokumentation
  |    +-- src           Initial Source als PDF
  +-- src                Eigentiche Software
-      +-- examples      Beispiele damit wir die Software machen können
+ |    +-- examples      Beispiele damit wir die Software machen können
+ +-- build              Verzeichnis um zu kompilieren
+      +-- Makefile 
 
 Source Code:
 Alle Tabs werden mit Spaces ersetzt
