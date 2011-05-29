@@ -2,9 +2,9 @@
 #include <stdlib.h>         // exit(), atoi()
 #include <sysexits.h>       // Return Codes an Eltern-Prozess
 #include <signal.h>         // Signal-Funktionen und Signale selbst
-#include <unistd.h>         // sleep()
 #include <pthread.h>        // Pthreads
-#include <sys/types.h>      // waitpid()
+#include <unistd.h>         // sleep(), getpid()
+#include <sys/types.h>      // waitpid(), getpid()
 #include <sys/wait.h>       // waitpid()
 #include <errno.h>          // errno
 #include <string.h>         // strerror()
@@ -59,6 +59,7 @@ int main(int argc, char* argv[]) {
 
 void* processThread(void* param) {
     pid_t displayPid;
+    pid_t oldDisplayPid;
     pid_t controlPid;
     pid_t returnPid;
     char* nSignals;
@@ -71,20 +72,23 @@ void* processThread(void* param) {
     while (running) {
         // Warten auf alle Kinder
         returnPid = waitpid(-1, NULL, 0);
-        if (returnPid == displayPid) {
-            kill(controlPid, SIGUSR1);
+        if (returnPid == controlPid) {
+            kill(displayPid, SIGUSR1);
+            oldDisplayPid = displayPid;
             createDisplayProcess(&displayPid, nSignals);
             createControlProcess(&controlPid, nSignals, displayPid);
-        } else if (returnPid == controlPid) {
-            createControlProcess(&controlPid, nSignals, displayPid);
+        } else if (returnPid == displayPid) {
+            createDisplayProcess(&displayPid, nSignals);
+        } else if (returnPid == oldDisplayPid) {
+            debug("Parent catched old Display PID (%d)\n", returnPid);
         } else {
             fprintf(stderr, "Unknow child with PID %d: Exit!\n", returnPid);
         }
     }
     
-    printf("Kill PID %d\n", displayPid);
+    debug("Kill PID %d\n", displayPid);
     kill(displayPid, SIGUSR1);
-    printf("Kill PID %d\n", controlPid);
+    debug("Kill PID %d\n", controlPid);
     kill(controlPid, SIGUSR1);
     
     return NULL;
@@ -138,7 +142,7 @@ void createControlProcess(pid_t* controlPid, char* nSensors, pid_t displayPid) {
  */
 void createProcess(pid_t* pid, const char* path, char* const argv[]) {
     
-#if DEBUG
+#if DEBUG_MORE
     int i;
     
     printf("PATH=\"%s\" ", path);

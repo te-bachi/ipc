@@ -2,7 +2,7 @@
 CC      = g++
 LD      = g++
 
-CFLAGS  = -g -Wall
+CFLAGS  = -DDEBUG -g -Wall
 LDFLAGS = -pthread
 
 all: HSMain.e HSDisplay.e HSControl.e HSDataTx.e SensorDevices.e
