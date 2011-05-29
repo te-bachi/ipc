@@ -1,28 +1,29 @@
 
 CC      = g++
 LD      = g++
-SRC     = ../src
-CFLAGS  = -g -Wall
 
-all: HSMain HSDisplay HSControl HSDataTx SensorDevices
+CFLAGS  = -g -Wall
+LDFLAGS = -pthread
+
+all: HSMain.e HSDisplay.e HSControl.e HSDataTx.e SensorDevices.e
 	
 
 clean:
 	rm -f *.o *.a *.e
 
-HSMain: HSMain.o $(SRC)/defs.h
-	$(CC) -o HSMain.e HSMain.o
+HSMain.e: HSMain.o Utils.o ../src/Utils.h ../src/defs.h
+	$(CC) $(LDFLAGS) -o HSMain.e HSMain.o Utils.o
 
-HSDisplay: HSDisplay.o $(SRC)/defs.h
-	$(CC) -o HSDisplay.e HSDisplay.o
+HSDisplay.e: HSDisplay.o Utils.o ../src/Utils.h ../src/defs.h
+	$(CC) -o HSDisplay.e HSDisplay.o Utils.o
 
-HSControl: HSControl.o $(SRC)/defs.h
-	$(CC) -o HSControl.e HSControl.o
+HSControl.e: HSControl.o Utils.o ../src/Utils.h ../src/defs.h
+	$(CC) -o HSControl.e HSControl.o Utils.o
 
-HSDataTx: HSDataTx.o $(SRC)/defs.h
-	$(CC) -o HSDataTx.e HSDataTx.o
+HSDataTx.e: HSDataTx.o Utils.o ../src/Utils.h ../src/defs.h
+	$(CC) -o HSDataTx.e HSDataTx.o Utils.o
 
-SensorDevices: SensorDevices.o $(SRC)/defs.h
+SensorDevices.e: SensorDevices.o ../src/defs.h
 	$(CC) -o SensorDevices.e SensorDevices.o
 
 %.o: ../src/%.cc
