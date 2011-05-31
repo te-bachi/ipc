@@ -14,7 +14,10 @@ int main(int argc, char *argv[]) {
     
     setupSignals();
     debug(INFO, "Control (%d)", getpid());
-    sleep(7);
+    
+    while (true) {
+        sleep(5);
+    }
     
     return 0;
 }
@@ -40,6 +43,7 @@ void signalHandler(int sigNo) {
            break;
            
        case SIGUSR1:
+           debug(INFO, "Control Shutdown (%d)", getpid());
            exit(0);
            break;
    }

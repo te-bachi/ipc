@@ -3,6 +3,7 @@
 #include <stdarg.h>         // va_list
 #include <unistd.h>         // sleep(), getpid()
 #include <sys/types.h>      // waitpid(), getpid()
+#include <time.h>
 
 #include "Utils.h"
 
@@ -32,11 +33,21 @@ void debugNewLine() {
 }
 
 int debug(DebugLevel level, const char *format, ...) {
-    int     retVal = 0;
-    va_list args;
+    int       retVal = 0;
+    time_t    unixtime;
+    struct tm now;
+    va_list   args;
     
     if (level <= currentLevel) {
         va_start(args, format);
+        unixtime = time(NULL);
+        localtime_r(&unixtime, &now);
+        fprintf(debugStream, "[%02d.%02d.%02d %02d:%02d:%02d] ", now.tm_mday,
+                                                                 now.tm_mon + 1,
+                                                                 now.tm_year + 1900,
+                                                                 now.tm_hour,
+                                                                 now.tm_min,
+                                                                 now.tm_sec);
         if      (level == FATAL) fprintf(debugStream, "[FATAL] ");
         else if (level == ERROR) fprintf(debugStream, "[ERROR] ");
         else if (level == WARN)  fprintf(debugStream, "[WARN ] ");

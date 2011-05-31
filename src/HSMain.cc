@@ -31,7 +31,10 @@ void createControlProcess(pid_t *controlPid, char *nSensors, pid_t displayPid);
 // Funktionen für Socket Thread
 
 // Globale Variablen
-bool running;
+pid_t displayPid;
+pid_t controlPid;
+bool  running;
+pthread_mutex_t runningMutex;
 
 int main(int argc, char *argv[]) {
     pthread_t procThread;
@@ -51,6 +54,7 @@ int main(int argc, char *argv[]) {
     }
     
     running = true;
+    pthread_mutex_init(&runningMutex, NULL);
     setupSignals();
     
     pthread_create(&procThread, NULL, processThread, argv[1]);
@@ -58,6 +62,8 @@ int main(int argc, char *argv[]) {
     
     pthread_join(procThread, NULL);
     pthread_join(sockThread, NULL);
+    
+    debug(INFO, "Exit!");
     
     return EX_OK;
 }
@@ -83,10 +89,8 @@ void signalHandler(int sigNo) {
 }
 
 void *processThread(void *param) {
-    pid_t displayPid;
-    pid_t oldDisplayPid;
-    pid_t controlPid;
     pid_t returnPid;
+pid_t oldDisplayPid;
     char *nSignals;
     int   status;
     
@@ -95,36 +99,40 @@ void *processThread(void *param) {
     createDisplayProcess(&displayPid, nSignals);
     createControlProcess(&controlPid, nSignals, displayPid);
     
-    while (running) {
-        // Warten auf alle Kinder
-        returnPid = waitpid(-1, &status, 0);
-        if (status != 0) {
-            debug(FATAL, "Status from child < 0: Exit!");
-            shutdown();
-        } else {
-            if (returnPid == controlPid) {
-                kill(displayPid, SIGUSR1);
-                oldDisplayPid = displayPid;
-                createDisplayProcess(&displayPid, nSignals);
-                createControlProcess(&controlPid, nSignals, displayPid);
-            } else if (returnPid == displayPid) {
-                createDisplayProcess(&displayPid, nSignals);
-            } else if (returnPid == oldDisplayPid) {
-                debug(DEBUG, "Parent catched old Display PID (%d)\n", returnPid);
+    // Warten auf alle Kinder
+    returnPid = waitpid(-1, &status, 0);
+    while (returnPid > 0) {
+        pthread_mutex_lock(&runningMutex);
+        if (running) {
+            if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
+                debug(FATAL, "Status from child %d: Exit!", WEXITSTATUS(status));
+                shutdown();
             } else {
-                fprintf(stderr, "Unknow child with PID %d: Exit!\n", returnPid);
+                if (returnPid == controlPid) {
+                    debug(DEBUG, "Restart HSControl");
+                    if (kill(displayPid, SIGUSR1) == -1) {
+                        debug(FATAL, "Can't kill PID %d", displayPid, strerror(errno));
+                    }
+                    oldDisplayPid = displayPid;
+                    createDisplayProcess(&displayPid, nSignals);
+                    createControlProcess(&controlPid, nSignals, displayPid);
+                } else if (returnPid == displayPid) {
+                    debug(DEBUG, "Restart HSDisplay");
+                    createDisplayProcess(&displayPid, nSignals);
+                } else if (returnPid == oldDisplayPid) {
+                    debug(DEBUG, "Parent catched old Display PID (%d)\n", returnPid);
+                } else {
+                    fprintf(stderr, "Unknow child with PID %d: Exit!\n", returnPid);
+                }
             }
         }
+        pthread_mutex_unlock(&runningMutex);
+        
+        // Warten auf alle Kinder
+        returnPid = waitpid(-1, &status, 0);
     }
     
-    debug(DEBUG, "Kill PID %d\n", displayPid);
-    kill(displayPid, SIGUSR1);
-    debug(DEBUG, "Kill PID %d\n", controlPid);
-    kill(controlPid, SIGUSR1);
-    
-    waitpid(displayPid, NULL, 0);
-    waitpid(controlPid, NULL, 0);
-    
+    debug(INFO, "Exit Process Thread");
     return NULL;
 }
 
@@ -138,9 +146,22 @@ void *socketThread(void *param) {
 }
 
 void shutdown() {
+    pthread_mutex_lock(&runningMutex);
+    
     debugNewLine();
     debug(INFO, "Shutdown");
+    
     running = false;
+    
+    if (kill(displayPid, SIGUSR1) == -1) {
+        debug(FATAL, "Can't kill PID %d", displayPid, strerror(errno));
+    }
+        
+    if (kill(controlPid, SIGUSR1) == -1) {
+        debug(FATAL, "Can't kill PID %d", controlPid, strerror(errno));
+    }
+    
+    pthread_mutex_unlock(&runningMutex);
 }
 
 void createDisplayProcess(pid_t *displayPid, char *nSensors) {
