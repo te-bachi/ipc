@@ -116,9 +116,9 @@ void setupSharedMemory() {
     if ((fd = open(SHM_KEY_FILE, O_RDWR | O_CREAT, 0770)) >= 0) {
         close(fd);
         
-        if ((key = ftok(SHM_KEY_FILE, PROJECT_ID)) >= 0) {
+        if ((key = ftok(SHM_KEY_FILE, PROJECT_ID)) != 0) {
             if ((shmId = shmget(key, anzSensors * sizeof(SensorData), 0770 | IPC_CREAT)) >= 0) {
-                if ((int) (shmAddr = shmat(shmId, NULL, 0)) == -1) {
+                if ((shmAddr = shmat(shmId, NULL, 0)) == (void *) -1) {
                     sensors = (SensorData *) shmAddr;
                 } else {
                     debug(FATAL, "Can't map shared mempory: %s", strerror(errno));
