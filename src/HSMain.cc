@@ -126,17 +126,13 @@ void shutdown() {
     
     debug(INFO, "Shutdown");
     
-    alarm(1);
-    
     pthread_mutex_lock(&runningMutex);
-    
     running = false;
+    pthread_mutex_unlock(&runningMutex);
     
-    
-    //if (kill(mainPid, SIGALRM) == -1) {
-    //    debug(FATAL, "Can't kill Main PID %d: %s", mainPid, strerror(errno));
-    //}
-    //pthread_kill(sockThread, SIGALRM);  
+    if (kill(mainPid, SIGALRM) == -1) {
+        debug(FATAL, "Can't kill Main PID %d: %s", mainPid, strerror(errno));
+    }
     
     if (kill(displayPid, SIGUSR1) == -1) {
         debug(FATAL, "Can't kill Display PID %d: %s", displayPid, strerror(errno));
@@ -146,7 +142,6 @@ void shutdown() {
         debug(FATAL, "Can't kill Control PID %d: %s", controlPid, strerror(errno));
     }
     
-    pthread_mutex_unlock(&runningMutex);
 }
 
 /******************************************************************************
