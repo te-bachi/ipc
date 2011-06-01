@@ -9,19 +9,24 @@
 
 int main(int argc, char* argv[]) {
     Msg msg;
-    msg.msgType = MSG_TYPE1;
 
-    int qid = msgget(12340, 0777 | IPC_CREAT);
+    int qid = msgget(12340, 0777);
+    printf("DATA: qid: %i\n", qid);
 
 
-    printf("DataTX: Warte auf Anfrage...\n");
+    printf("DATA: Warte auf Anfrage...\n");
 
     msgrcv(qid, &msg, MSG_LENGTH1, MSG_TYPE1, 0); // 1. Meldung lesen
     while(true)   {
-        printf ("SERVER: Verarbeite Anfrage...\n");
+        printf("DATA: Verarbeite Anfrage...\n");
         // TODO: impelementieren
+
+        if (msgrcv(qid, &msg, MSG_LENGTH1, MSG_TYPE1, 0) < 0) { // naechste Meldung lesen.
+            perror("Queue lesen");
+            return 1;
+        }
     }
 
-    printf ("SERVER: *** Ende ***\n");
+    printf("DATA: *** Ende ***\n");
     return 0;
 }
