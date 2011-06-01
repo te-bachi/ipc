@@ -99,9 +99,6 @@ void setupSignals() {
 }
 
 void signalHandler(int sigNo) {
-    pthread_t       self = pthread_self();
-    
-    debug(INFO, "Thread %.8x", self);
     switch (sigNo) {
         case SIGINT:
             debugNewLine();
