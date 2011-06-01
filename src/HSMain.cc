@@ -36,7 +36,6 @@ void createDisplayProcess(pid_t *displayPid, char *nSensors);
 void createControlProcess(pid_t *controlPid, char *nSensors, pid_t displayPid);
 
 // Funktionen für Socket Thread
-int setNonblocking(int fd);
 void *socketRequest(void *param);
 
 // Globale Variablen
@@ -90,9 +89,6 @@ void usage(char *prog) {
 void setupSignals() {
     struct sigaction action;
     
-    mainPid = getpid();
-    debug(INFO, "MainPID %u", mainPid);
-    
     action.sa_handler = signalHandler;
     action.sa_flags = SA_RESTART;
     sigemptyset(&action.sa_mask);
@@ -132,9 +128,7 @@ void shutdown() {
     running = false;
     pthread_mutex_unlock(&runningMutex);
     
-    //if (kill(mainPid, SIGALRM) == -1) {
-    //    debug(FATAL, "Can't kill Main PID %d: %s", mainPid, strerror(errno));
-    //}
+    pthread_cancel(sockThread);
     
     if (kill(displayPid, SIGUSR1) == -1) {
         debug(FATAL, "Can't kill Display PID %d: %s", displayPid, strerror(errno));
@@ -185,7 +179,7 @@ void *processThread(void *param) {
                 } else if (returnPid == oldDisplayPid) {
                     debug(DEBUG, "Parent catched old Display PID (%d)\n", returnPid);
                 } else {
-                    fprintf(stderr, "Unknow child with PID %d: Exit!\n", returnPid);
+                    debug(ERROR, "Unknow child with PID %d\n", returnPid);
                 }
             }
         }
@@ -300,9 +294,8 @@ void *socketThread(void *param) {
         serverAddr.sin_port        = htons(COMM_PORT);
         
         if (bind(listenfd, (const struct sockaddr *) &serverAddr, sizeof(serverAddr)) == 0) {
-            //if (listen(listenfd, SENSOR_MAX_NUM) == 0) {
+            if (listen(listenfd, SENSOR_MAX_NUM) == 0) {
                 clientAddrLen = sizeof(clientAddr);
-                setNonblocking(listenfd);
                 while (running) {
                     if ((connectfd = accept(listenfd, (struct sockaddr *) &clientAddr, &clientAddrLen)) >= 0) {
                         inet_ntop(AF_INET, &clientAddr.sin_addr, clientIp, sizeof(clientIp));
@@ -311,21 +304,17 @@ void *socketThread(void *param) {
 
                         threadConnectFd.i = connectfd;
                         pthread_create(&tid, NULL, socketRequest, (void *) &threadConnectFd);
+                    } else if (errno == EWOULDBLOCK) {
+                        
                     } else {
-                        if (errno == EINTR) {
-                            debug(INFO, "Interrupted");
-                        } else {
-                            debug(ERROR, "Can't accept connection: %s", strerror(errno));
-                        }
+                        debug(ERROR, "Can't accept connection: %s", errno, strerror(errno));
                     }
-                    debug(INFO, "Is thread still running? %s", running ? "true" : "false");
-                    sleep(1);
                 }
                 
-            //} else {
-            //    debug(FATAL, "Can't mark socket as passive (listen-mode): %s", strerror(errno));
-            //    shutdown();
-            //}
+            } else {
+                debug(FATAL, "Can't mark socket as passive (listen-mode): %s", strerror(errno));
+                shutdown();
+            }
         } else {
             debug(FATAL, "Can't bind socket: %s", strerror(errno));
             shutdown();
@@ -339,14 +328,6 @@ void *socketThread(void *param) {
     }
     
     return NULL;
-}
-
-int setNonblocking(int fd) {
-    int flags;
-    if (-1 == (flags = fcntl(fd, F_GETFL, 0))) {
-        flags = 0;
-    }
-    return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
 
 void *socketRequest(void *param) {
