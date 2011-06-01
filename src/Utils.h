@@ -11,7 +11,7 @@ enum DebugLevel {
 };
 
 
-bool isnumber(char *str);
+bool isnumber2(char *str);
 void setDebugStream(FILE *stream);
 void setDebugLevel(DebugLevel level);
 void debugNewLine();
