@@ -28,7 +28,7 @@ int main(int argc, char *argv[]) {
 
     int qidData = msgget(12340, 0777 | IPC_CREAT);
     int qidDisplay = msgget(12341, 0777 | IPC_CREAT);
-    printf("CONTROL: qidData: %i\n", qidData);
+    debug(INFO, "CONTROL: qidData: %i", qidData);
 
     /**
      * SControl sendet alle Sekunden eine Message (Type 3333) an HSDisplay
@@ -44,12 +44,12 @@ int main(int argc, char *argv[]) {
             lastMessageHSDataTxSent = true;
 
             // send 3334 HSDataTx
-            printf("CONTROL: send message 3334 to HSData\n");
+            debug(INFO, "CONTROL: send message 3334 to HSData");
             sendSignalHSDataTx(qidData);
         }
         
         // send 3333 and HSDisplay
-        printf("CONTROL: send message 3333 to HSDisplay\n");
+        debug(INFO, "CONTROL: send message 3333 to HSDisplay");
         sendSignalHSDisplay(qidDisplay);
     }
     
