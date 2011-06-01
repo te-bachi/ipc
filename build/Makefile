@@ -5,7 +5,7 @@ LD      = g++
 CFLAGS  = -g -Wall
 LDFLAGS = -pthread
 
-all: HSMain.e HSDisplay.e HSControl.e HSDataTx.e SensorDevices.e
+all: HSMain.e HSDisplay.e HSControl.e HSDataTx.e SensorDevices.e SensorTest.e
 	
 
 clean:
@@ -25,6 +25,9 @@ HSDataTx.e: HSDataTx.o Utils.o ../src/Utils.h ../src/defs.h
 
 SensorDevices.e: SensorDevices.o ../src/defs.h
 	$(CC) -o SensorDevices.e SensorDevices.o
+
+SensorTest.e: SensorTest.o ../src/defs.h
+	$(CC) -o SensorTest.e SensorTest.o
 
 %.o: ../src/%.cc
 	$(CC) -c -o $@ $(CFLAGS) $<

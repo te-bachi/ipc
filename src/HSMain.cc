@@ -74,6 +74,11 @@ int main(int argc, char *argv[]) {
     
     anzSensors = atoi(argv[1]);
     
+    if (anzSensors > SENSOR_MAX_NUM) {
+        printf("Number of sensors (%d) exceets maximum (%d)!\n", anzSensors, SENSOR_MAX_NUM);
+        usage(argv[0]);
+    }
+    
     running = true;
     pthread_mutex_init(&runningMutex, NULL);
     setupSignals();
@@ -91,7 +96,7 @@ int main(int argc, char *argv[]) {
 }
 
 void usage(char *prog) {
-    printf("%s <Anzahl Sensoren>\n", prog);
+    printf("%s <Number of sensors>\n", prog);
     exit(EX_USAGE);
 }
 
@@ -118,7 +123,6 @@ void setupSharedMemory() {
     size_t size;
     
     size = 2 * anzSensors * sizeof(SensorData);
-    //debug(INFO, "%u < %u < %u?", SHMMIN, size, SHMMAX);
     
     if ((fd = open(SHM_KEY_FILE, O_RDWR | O_CREAT, 0770)) >= 0) {
         close(fd);
