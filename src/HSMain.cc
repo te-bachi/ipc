@@ -12,6 +12,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <fcntl.h>
 
 #include "defs.h"
 #include "Utils.h"
@@ -35,6 +36,7 @@ void createDisplayProcess(pid_t *displayPid, char *nSensors);
 void createControlProcess(pid_t *controlPid, char *nSensors, pid_t displayPid);
 
 // Funktionen für Socket Thread
+int setNonblocking(int fd);
 void *socketRequest(void *param);
 
 // Globale Variablen
@@ -130,9 +132,9 @@ void shutdown() {
     running = false;
     pthread_mutex_unlock(&runningMutex);
     
-    if (kill(mainPid, SIGALRM) == -1) {
-        debug(FATAL, "Can't kill Main PID %d: %s", mainPid, strerror(errno));
-    }
+    //if (kill(mainPid, SIGALRM) == -1) {
+    //    debug(FATAL, "Can't kill Main PID %d: %s", mainPid, strerror(errno));
+    //}
     
     if (kill(displayPid, SIGUSR1) == -1) {
         debug(FATAL, "Can't kill Display PID %d: %s", displayPid, strerror(errno));
@@ -293,11 +295,10 @@ void *socketThread(void *param) {
         serverAddr.sin_port        = htons(COMM_PORT);
         
         if (bind(listenfd, (const struct sockaddr *) &serverAddr, sizeof(serverAddr)) == 0) {
-            if (listen(listenfd, SENSOR_MAX_NUM) == 0) {
+            //if (listen(listenfd, SENSOR_MAX_NUM) == 0) {
                 clientAddrLen = sizeof(clientAddr);
+                setNonblocking(listenfd);
                 while (running) {
-                    // Da es kein InterruptedException gibt wie in Java,
-                    // müssen wir über globale Signal gehen
                     if ((connectfd = accept(listenfd, (struct sockaddr *) &clientAddr, &clientAddrLen)) >= 0) {
                         inet_ntop(AF_INET, &clientAddr.sin_addr, clientIp, sizeof(clientIp));
                         clientPort = ntohs(clientAddr.sin_port);
@@ -311,12 +312,13 @@ void *socketThread(void *param) {
                         }
                     }
                     debug(INFO, "Is thread still running? %s", running ? "true" : "false");
+                    sleep(1);
                 }
                 
-            } else {
-                debug(FATAL, "Can't mark socket as passive (listen-mode): %s", strerror(errno));
-                shutdown();
-            }
+            //} else {
+            //    debug(FATAL, "Can't mark socket as passive (listen-mode): %s", strerror(errno));
+            //    shutdown();
+            //}
         } else {
             debug(FATAL, "Can't bind socket: %s", strerror(errno));
             shutdown();
@@ -330,6 +332,14 @@ void *socketThread(void *param) {
     }
     
     return NULL;
+}
+
+int setNonblocking(int fd) {
+    int flags;
+    if (-1 == (flags = fcntl(fd, F_GETFL, 0))) {
+        flags = 0;
+    }
+    return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
 
 void *socketRequest(void *param) {
