@@ -38,6 +38,8 @@ void createControlProcess(pid_t *controlPid, char *nSensors, pid_t displayPid);
 void *socketRequest(void *param);
 
 // Globale Variablen
+pthread_t       procThread;
+pthread_t       sockThread;
 pid_t           mainPid;
 pid_t           displayPid;
 pid_t           controlPid;
@@ -49,8 +51,6 @@ pthread_mutex_t runningMutex;
  *****************************************************************************/
 
 int main(int argc, char *argv[]) {
-    pthread_t procThread;
-    pthread_t sockThread;
     
     setDebugLevel(INFO);
     
@@ -60,7 +60,7 @@ int main(int argc, char *argv[]) {
     }
     
     // Argument ist keine Zahl
-    if (!isnumber(argv[1])) {
+    if (!isnumber2(argv[1])) {
         printf("Argument is not a number!\n");
         usage(argv[0]);
     }
@@ -86,50 +86,57 @@ void usage(char *prog) {
 }
 
 void setupSignals() {
-   struct sigaction action;
-   
-   mainPid = getpid();
-   debug(INFO, "MainPID %u", mainPid);
-   
-   action.sa_handler = signalHandler;
-   action.sa_flags = SA_RESTART;
-   sigemptyset(&action.sa_mask);
-   sigaction(SIGINT, &action, NULL);
-   sigaction(SIGTERM, &action, NULL);
-   sigaction(SIGUSR1, &action, NULL);
-   sigaction(SIGALRM, &action, NULL);
+    struct sigaction action;
+    
+    mainPid = getpid();
+    debug(INFO, "MainPID %u", mainPid);
+    
+    action.sa_handler = signalHandler;
+    action.sa_flags = SA_RESTART;
+    sigemptyset(&action.sa_mask);
+    sigaction(SIGALRM, &action, NULL);
+    sigaction(SIGINT, &action, NULL);
+    sigaction(SIGTERM, &action, NULL);
+    sigaction(SIGUSR1, &action, NULL);
 }
 
 void signalHandler(int sigNo) {
-   switch (sigNo) {
-       case SIGINT:
-           debugNewLine();
-           debug(DEBUG, "Received interrupt signal (%d)", sigNo);
-           shutdown();
-           break;
-           
-       case SIGTERM:
-           debug(DEBUG, "Received termination signal (%d)", sigNo);
-           shutdown();
-           break;
-           
-       case SIGALRM:
-           debug(DEBUG, "Received alarm signal (%d)", sigNo);
-           break;
-   }
+    pthread_t       self = pthread_self();
+    
+    debug(INFO, "Thread %.8x", self);
+    switch (sigNo) {
+        case SIGINT:
+            debugNewLine();
+            debug(INFO, "Received interrupt signal (%d)", sigNo);
+            shutdown();
+            break;
+        
+        case SIGTERM:
+            debug(INFO, "Received termination signal (%d)", sigNo);
+            shutdown();
+            break;
+        
+        case SIGALRM:
+            debug(INFO, "Received alarm signal (%d)", sigNo);
+            break;
+    }
 }
 
 void shutdown() {
     
     debug(INFO, "Shutdown");
     
+    alarm(1);
+    
     pthread_mutex_lock(&runningMutex);
     
     running = false;
     
-    if (kill(mainPid, SIGALRM) == -1) {
-        debug(FATAL, "Can't kill Main PID %d: %s", mainPid, strerror(errno));
-    }
+    
+    //if (kill(mainPid, SIGALRM) == -1) {
+    //    debug(FATAL, "Can't kill Main PID %d: %s", mainPid, strerror(errno));
+    //}
+    //pthread_kill(sockThread, SIGALRM);  
     
     if (kill(displayPid, SIGUSR1) == -1) {
         debug(FATAL, "Can't kill Display PID %d: %s", displayPid, strerror(errno));
@@ -276,6 +283,13 @@ void *socketThread(void *param) {
     pthread_t           tid;
     char                clientIp[INET_ADDRSTRLEN];
     unsigned short      clientPort;
+    
+    struct sigaction action;
+    
+    action.sa_handler = signalHandler;
+    action.sa_flags = 0;
+    sigemptyset(&action.sa_mask);
+    sigaction(SIGALRM, &action, NULL);
     
     if ((listenfd = socket(AF_INET, SOCK_STREAM, 0)) >= 0) {
         bzero(&serverAddr, sizeof(serverAddr));

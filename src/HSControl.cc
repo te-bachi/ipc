@@ -13,7 +13,9 @@ int main(int argc, char *argv[]) {
     setDebugLevel(INFO);
     
     setupSignals();
-    debug(INFO, "Control (%d)", getpid());
+    debug(INFO, "Control Startup (%d)", getpid());
+    
+    close(0); //stdin
     
     while (true) {
         sleep(5);
