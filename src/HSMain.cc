@@ -12,6 +12,8 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <sys/shm.h>
+#include <sys/stat.h>
 #include <fcntl.h>
 
 #include "defs.h"
@@ -23,6 +25,7 @@
 // Main Funktionen
 void usage(char *prog);
 void setupSignals();
+void setupSharedMemory();
 void signalHandler(int sigNo);
 void shutdown();
 
@@ -46,6 +49,8 @@ pid_t           displayPid;
 pid_t           controlPid;
 bool            running;
 pthread_mutex_t runningMutex;
+SensorData*     sensors;
+int             anzSensors;
 
 /******************************************************************************
  * Main Thread
@@ -66,9 +71,12 @@ int main(int argc, char *argv[]) {
         usage(argv[0]);
     }
     
+    anzSensors = atoi(argv[1]);
+    
     running = true;
     pthread_mutex_init(&runningMutex, NULL);
     setupSignals();
+    setupSharedMemory();
     
     pthread_create(&procThread, NULL, processThread, argv[1]);
     pthread_create(&sockThread, NULL, socketThread, argv[1]);
@@ -96,6 +104,34 @@ void setupSignals() {
     sigaction(SIGINT, &action, NULL);
     sigaction(SIGTERM, &action, NULL);
     sigaction(SIGUSR1, &action, NULL);
+}
+
+void setupSharedMemory() {
+    int   fd;
+    key_t key;
+    int   shmId;
+    void *shmAddr;
+    //sensors = -1;
+    
+    if ((fd = open(SHM_KEY_FILE, O_RDWR | O_CREAT, 0770)) >= 0) {
+        close(fd);
+        
+        if ((key = ftok(SHM_KEY_FILE, PROJECT_ID)) >= 0) {
+            if ((shmId = shmget(key, anzSensors * sizeof(SensorData), 0770 | IPC_CREAT)) >= 0) {
+                if ((int) (shmAddr = shmat(shmId, NULL, 0)) == -1) {
+                    sensors = (SensorData *) shmAddr;
+                } else {
+                    debug(FATAL, "Can't map shared mempory: %s", strerror(errno));
+                }
+            } else {
+                debug(FATAL, "Can't create shared memory: %s", strerror(errno));
+            }
+        } else {
+            debug(FATAL, "Can't convert key: %s", strerror(errno));
+        }
+    } else {
+        debug(FATAL, "Can't open file: %s", strerror(errno));
+    }
 }
 
 void signalHandler(int sigNo) {
@@ -348,6 +384,12 @@ void *socketRequest(void *param) {
             debug(INFO, "deviceID=%u sequenceNr=%u valIS=%f valREF=%f status=%d",
                 sensor.deviceID, sensor.sequenceNr, sensor.valIS, sensor.valREF,
                 sensor.status);
+            
+            if (sensors >= 0) {
+                sensors[sensor.deviceID] = sensor;
+            } else {
+                debug(INFO, "Can't access sensor memory");
+            }
         } else {
             debug(ERROR, "Size of data read don't match! size=%u", len);
         }
