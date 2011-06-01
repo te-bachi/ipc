@@ -8,13 +8,19 @@
 #include <sys/wait.h>       // waitpid()
 #include <errno.h>          // errno
 #include <string.h>         // strerror()
+#include <strings.h>        // bzero()
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
+#include "defs.h"
 #include "Utils.h"
 
 #define PROG_DISPLAY "./HSDisplay.e"
 #define PROG_CONTROL "./HSControl.e"
 
 // Main Funktionen
+void usage(char *prog);
 void setupSignals();
 void signalHandler(int sigNo);
 void shutdown();
@@ -29,12 +35,18 @@ void createDisplayProcess(pid_t *displayPid, char *nSensors);
 void createControlProcess(pid_t *controlPid, char *nSensors, pid_t displayPid);
 
 // Funktionen für Socket Thread
+void *socketRequest(void *param);
 
 // Globale Variablen
-pid_t displayPid;
-pid_t controlPid;
-bool  running;
+pid_t           mainPid;
+pid_t           displayPid;
+pid_t           controlPid;
+bool            running;
 pthread_mutex_t runningMutex;
+
+/******************************************************************************
+ * Main Thread
+ *****************************************************************************/
 
 int main(int argc, char *argv[]) {
     pthread_t procThread;
@@ -44,13 +56,13 @@ int main(int argc, char *argv[]) {
     
     // Nicht genug Argumente
     if (argc < 2) {
-        printf("%s <Anzahl Sensoren>\n", argv[0]);
-        exit(EX_USAGE);
+        usage(argv[0]);
     }
     
+    // Argument ist keine Zahl
     if (!isnumber(argv[1])) {
         printf("Argument is not a number!\n");
-        exit(EX_USAGE);
+        usage(argv[0]);
     }
     
     running = true;
@@ -68,29 +80,75 @@ int main(int argc, char *argv[]) {
     return EX_OK;
 }
 
+void usage(char *prog) {
+    printf("%s <Anzahl Sensoren>\n", prog);
+    exit(EX_USAGE);
+}
+
 void setupSignals() {
    struct sigaction action;
-
+   
+   mainPid = getpid();
+   debug(INFO, "MainPID %u", mainPid);
+   
    action.sa_handler = signalHandler;
    action.sa_flags = SA_RESTART;
    sigemptyset(&action.sa_mask);
    sigaction(SIGINT, &action, NULL);
    sigaction(SIGTERM, &action, NULL);
    sigaction(SIGUSR1, &action, NULL);
+   sigaction(SIGALRM, &action, NULL);
 }
 
 void signalHandler(int sigNo) {
    switch (sigNo) {
        case SIGINT:
-       case SIGTERM:
+           debugNewLine();
+           debug(DEBUG, "Received interrupt signal (%d)", sigNo);
            shutdown();
+           break;
+           
+       case SIGTERM:
+           debug(DEBUG, "Received termination signal (%d)", sigNo);
+           shutdown();
+           break;
+           
+       case SIGALRM:
+           debug(DEBUG, "Received alarm signal (%d)", sigNo);
            break;
    }
 }
 
+void shutdown() {
+    
+    debug(INFO, "Shutdown");
+    
+    pthread_mutex_lock(&runningMutex);
+    
+    running = false;
+    
+    if (kill(mainPid, SIGALRM) == -1) {
+        debug(FATAL, "Can't kill Main PID %d: %s", mainPid, strerror(errno));
+    }
+    
+    if (kill(displayPid, SIGUSR1) == -1) {
+        debug(FATAL, "Can't kill Display PID %d: %s", displayPid, strerror(errno));
+    }
+        
+    if (kill(controlPid, SIGUSR1) == -1) {
+        debug(FATAL, "Can't kill Control PID %d: %s", controlPid, strerror(errno));
+    }
+    
+    pthread_mutex_unlock(&runningMutex);
+}
+
+/******************************************************************************
+ * Process Thread
+ *****************************************************************************/
+
 void *processThread(void *param) {
     pid_t returnPid;
-pid_t oldDisplayPid;
+    pid_t oldDisplayPid;
     char *nSignals;
     int   status;
     
@@ -101,6 +159,7 @@ pid_t oldDisplayPid;
     
     // Warten auf alle Kinder
     returnPid = waitpid(-1, &status, 0);
+    
     while (returnPid > 0) {
         pthread_mutex_lock(&runningMutex);
         if (running) {
@@ -136,34 +195,6 @@ pid_t oldDisplayPid;
     return NULL;
 }
 
-void *socketThread(void *param) {
-    
-    while (running) {
-        
-    }
-    
-    return NULL;
-}
-
-void shutdown() {
-    pthread_mutex_lock(&runningMutex);
-    
-    debugNewLine();
-    debug(INFO, "Shutdown");
-    
-    running = false;
-    
-    if (kill(displayPid, SIGUSR1) == -1) {
-        debug(FATAL, "Can't kill PID %d", displayPid, strerror(errno));
-    }
-        
-    if (kill(controlPid, SIGUSR1) == -1) {
-        debug(FATAL, "Can't kill PID %d", controlPid, strerror(errno));
-    }
-    
-    pthread_mutex_unlock(&runningMutex);
-}
-
 void createDisplayProcess(pid_t *displayPid, char *nSensors) {
     char *path = (char *) PROG_DISPLAY;
     char *argv[3];
@@ -177,7 +208,7 @@ void createDisplayProcess(pid_t *displayPid, char *nSensors) {
 
 void createControlProcess(pid_t *controlPid, char *nSensors, pid_t displayPid) {
     char *path = (char *) PROG_CONTROL;
-    char  pidStr[255];
+    char  pidStr[16];
     char *argv[4];
     
     snprintf(pidStr, sizeof(pidStr), "%d", displayPid);
@@ -231,4 +262,74 @@ void createProcess(pid_t *pid, const char *path, char *const argv[]) {
             break;
     }
 }
+
+/******************************************************************************
+ * Socket Thread
+ *****************************************************************************/
+
+void *socketThread(void *param) {
+    int                 listenfd;
+    int                 connectfd;
+    struct sockaddr_in  serverAddr;
+    struct sockaddr_in  clientAddr;
+    socklen_t           clientAddrLen;
+    pthread_t           tid;
+    char                clientIp[INET_ADDRSTRLEN];
+    unsigned short      clientPort;
+    
+    if ((listenfd = socket(AF_INET, SOCK_STREAM, 0)) >= 0) {
+        bzero(&serverAddr, sizeof(serverAddr));
+        serverAddr.sin_family      = AF_INET;
+        serverAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+        serverAddr.sin_port        = htons(COMM_PORT);
+        
+        if (bind(listenfd, (const struct sockaddr *) &serverAddr, sizeof(serverAddr)) == 0) {
+            if (listen(listenfd, SENSOR_MAX_NUM) == 0) {
+                clientAddrLen = sizeof(clientAddr);
+                while (running) {
+                    // Da es kein InterruptedException gibt wie in Java,
+                    // müssen wir über globale Signal gehen
+                    if ((connectfd = accept(listenfd, (struct sockaddr *) &clientAddr, &clientAddrLen)) >= 0) {
+                        inet_ntop(AF_INET, &clientAddr.sin_addr, clientIp, sizeof(clientIp));
+                        clientPort = ntohs(clientAddr.sin_port);
+                        debug(INFO, "Accept client %s from port %u", clientIp, clientPort);
+                        pthread_create(&tid, NULL, socketRequest, (void *) connectfd);
+                    } else {
+                        if (errno == EINTR) {
+                            debug(INFO, "Interrupted");
+                        } else {
+                            debug(ERROR, "Can't accept connection: %s", strerror(errno));
+                        }
+                    }
+                    debug(INFO, "Is thread still running? %s", running ? "true" : "false");
+                }
+                
+            } else {
+                debug(FATAL, "Can't mark socket as passive (listen-mode): %s", strerror(errno));
+                shutdown();
+            }
+        } else {
+            debug(FATAL, "Can't bind socket: %s", strerror(errno));
+            shutdown();
+        }
+        
+        close(listenfd);
+        
+    } else {
+        debug(FATAL, "Can't create socket: %s", strerror(errno));
+        shutdown();
+    }
+    
+    return NULL;
+}
+
+void *socketRequest(void *param) {
+    int connectfd = (int) param;
+    close(connectfd);
+    return NULL;
+}
+
+
+
+
 
