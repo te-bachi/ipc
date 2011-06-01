@@ -271,9 +271,14 @@ void createProcess(pid_t *pid, const char *path, char *const argv[]) {
  * Socket Thread
  *****************************************************************************/
 
+typedef struct {
+    int i;
+} IntStruct;
+
 void *socketThread(void *param) {
     int                 listenfd;
     int                 connectfd;
+    IntStruct           threadConnectFd;
     struct sockaddr_in  serverAddr;
     struct sockaddr_in  clientAddr;
     socklen_t           clientAddrLen;
@@ -303,7 +308,9 @@ void *socketThread(void *param) {
                         inet_ntop(AF_INET, &clientAddr.sin_addr, clientIp, sizeof(clientIp));
                         clientPort = ntohs(clientAddr.sin_port);
                         debug(INFO, "Accept client %s from port %u", clientIp, clientPort);
-                        pthread_create(&tid, NULL, socketRequest, (void *) connectfd);
+
+                        threadConnectFd.i = connectfd;
+                        pthread_create(&tid, NULL, socketRequest, (void *) &threadConnectFd);
                     } else {
                         if (errno == EINTR) {
                             debug(INFO, "Interrupted");
@@ -343,7 +350,7 @@ int setNonblocking(int fd) {
 }
 
 void *socketRequest(void *param) {
-    int connectfd = (int) param;
+    int connectfd = ((IntStruct *) param)->i;
     close(connectfd);
     return NULL;
 }

@@ -3,10 +3,19 @@
 #include <signal.h>         // Signal-Funktionen und Signale selbst
 #include <stdlib.h>         // exit()
 
+#include <unistd.h>         // Linux standards
+#include <sys/types.h>      // Linux Typendefinitionen
+#include <sys/ipc.h>        // SVR4 IPC Mechanismen 
+#include <sys/msg.h>        // SVR4 Message Queues 
+
 #include "Utils.h"
+#include "defs.h"
 
 void setupSignals();
 void signalHandler(int sig);
+
+void sendSignalHSDataTx(int qid);
+void sendSignalHSDisplay(int qid);
 
 int main(int argc, char *argv[]) {
     
@@ -16,12 +25,51 @@ int main(int argc, char *argv[]) {
     debug(INFO, "Control Startup (%d)", getpid());
     
     close(0); //stdin
-    
+
+    int qidData = msgget(12340, 0777 | IPC_CREAT);
+    int qidDisplay = msgget(12341, 0777 | IPC_CREAT);
+
+    /**
+     * SControl sendet alle Sekunden eine Message (Type 3333) an HSDisplay
+     * und alle 2 Sekunden eine Message (Type 3334) an HSDataTx.
+     */
+
+    bool lastMessageHSDataTxSent = false;
     while (true) {
-        sleep(5);
+        sleep(1);
+        if(lastMessageHSDataTxSent) {
+            lastMessageHSDataTxSent = false;
+        } else {
+            lastMessageHSDataTxSent = true;
+
+            // send 3334 HSDataTx
+            printf("CONTROL: send message 3334 to HSData\n");
+            sendSignalHSDataTx(qidDisplay);
+        }
+        
+        // send 3333 and HSDisplay
+        printf("CONTROL: send message 3333 to HSDisplay\n");
+        sendSignalHSDisplay(qidData);
     }
     
     return 0;
+}
+
+void sendSignalHSDisplay(int qid) {
+    Message msg;
+    msg.msgType = MSG_TYPE;
+    // msg.mdata = 0;
+
+    msgsnd(qid, &msg, MSG_LENGTH, 0);
+}
+
+void sendSignalHSDataTx(int qid) {
+    Msg msg;
+    msg.msgType = MSG_TYPE1;
+    msg.numOfSensors = 0;
+    //msg.ctrl = //float ctrl[SENSOR_MAX_NUM]
+
+    msgsnd(qid, &msg, MSG_LENGTH1, 0);
 }
 
 void setupSignals() {

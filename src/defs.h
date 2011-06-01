@@ -31,8 +31,8 @@
 //------------------------------------------------------------------------------
 
 typedef struct {                // sensor data
-	unsigned deviceID;          // sensor ID
-	unsigned sequenceNr;        // sequence number of data
+    unsigned deviceID;          // sensor ID
+    unsigned sequenceNr;        // sequence number of data
     float    valIS;             // temperature: measured
     float    valREF;            // temperature: reference
 	int		 status;			// status
