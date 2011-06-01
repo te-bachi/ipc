@@ -326,9 +326,35 @@ void *socketThread(void *param) {
     
     return NULL;
 }
-
+/*
+typedef struct {                // sensor data
+    unsigned deviceID;          // sensor ID
+    unsigned sequenceNr;        // sequence number of data
+    float    valIS;             // temperature: measured
+    float    valREF;            // temperature: reference
+    int      status;            // status
+} SensorData, *SensorDataPtr;
+*/
 void *socketRequest(void *param) {
-    int connectfd = ((IntStruct *) param)->i;
+    SensorData sensor;
+    int        connectfd;
+    ssize_t    len;
+    
+    connectfd = ((IntStruct *) param)->i;
+    
+    len = read(connectfd, (char *)&sensor, sizeof(SensorData));
+    if (len >= 0) {
+        if (len == sizeof(SensorData)) {
+            debug(INFO, "deviceID=%u sequenceNr=%u valIS=%f valREF=%f status=%d",
+                sensor.deviceID, sensor.sequenceNr, sensor.valIS, sensor.valREF,
+                sensor.status);
+        } else {
+            debug(ERROR, "Size of data read don't match! size=%u", len);
+        }
+    } else {
+        debug(ERROR, "Can't read: %s", strerror(errno));
+    }
+                                            
     close(connectfd);
     return NULL;
 }
