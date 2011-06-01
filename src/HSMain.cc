@@ -49,6 +49,7 @@ pid_t           displayPid;
 pid_t           controlPid;
 bool            running;
 pthread_mutex_t runningMutex;
+int             shmId;
 SensorData*     sensors;
 int             anzSensors;
 
@@ -106,18 +107,24 @@ void setupSignals() {
     sigaction(SIGUSR1, &action, NULL);
 }
 
+/**
+ * Anzeigen: ipcs -m
+ * Löschen: ipcrm -m <shmid>
+ */
 void setupSharedMemory() {
     int   fd;
     key_t key;
-    int   shmId;
     void *shmAddr;
-    //sensors = -1;
+    size_t size;
+    
+    size = 2 * anzSensors * sizeof(SensorData);
+    //debug(INFO, "%u < %u < %u?", SHMMIN, size, SHMMAX);
     
     if ((fd = open(SHM_KEY_FILE, O_RDWR | O_CREAT, 0770)) >= 0) {
         close(fd);
         
         if ((key = ftok(SHM_KEY_FILE, PROJECT_ID)) != 0) {
-            if ((shmId = shmget(key, anzSensors * sizeof(SensorData), 0770 | IPC_CREAT)) >= 0) {
+            if ((shmId = shmget(key, size, 0770 | IPC_CREAT)) >= 0) {
                 if ((shmAddr = shmat(shmId, NULL, 0)) != (void *) -1) {
                     sensors = (SensorData *) shmAddr;
                 } else {
@@ -159,6 +166,11 @@ void shutdown() {
     
     pthread_mutex_lock(&runningMutex);
     running = false;
+    
+    if (shmctl(shmId, IPC_RMID, NULL) == -1) {
+        debug(FATAL, "Can't remove shared memory %u: %s", shmId, strerror(errno));
+    }
+    
     pthread_mutex_unlock(&runningMutex);
     
     pthread_cancel(sockThread);
