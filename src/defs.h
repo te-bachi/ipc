@@ -9,8 +9,8 @@
 
 //------------------------------------------------------------------------------
 
-#define PGROUP		"MyName"
-#define PGROUPNR	0
+#define PGROUP      "MyName"
+#define PGROUPNR    0
 
 // fflush requires stdio.h
 #include <stdio.h>
@@ -35,7 +35,7 @@ typedef struct {                // sensor data
     unsigned sequenceNr;        // sequence number of data
     float    valIS;             // temperature: measured
     float    valREF;            // temperature: reference
-	int		 status;			// status
+    int      status;            // status
 } SensorData, *SensorDataPtr;
 
 //------------------------------------------------------------------------------
@@ -62,7 +62,7 @@ typedef struct {                                    // message
 
 typedef struct {                                    // message type 1
     long  msgType;                                  //     type
-	int	  numOfSensors;								//	   number of sensors
+    int   numOfSensors;                             //     number of sensors
     float ctrl[SENSOR_MAX_NUM];                     //     data
 } Msg, *MsgPtr;
 
