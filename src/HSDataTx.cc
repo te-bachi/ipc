@@ -5,6 +5,7 @@
 #include <sys/ipc.h>        // SVR4 IPC Mechanismen 
 #include <sys/msg.h>        // SVR4 Message Queues 
 
+#include "Utils.h"
 #include "defs.h"
 
 int main(int argc, char* argv[]) {
@@ -17,8 +18,8 @@ int main(int argc, char* argv[]) {
     printf("DATA: Warte auf Anfrage...\n");
 
     msgrcv(qid, &msg, MSG_LENGTH1, MSG_TYPE1, 0); // 1. Meldung lesen
-    while(true)   {
-        printf("DATA: Verarbeite Anfrage...\n");
+    while(true) {
+        debug(INFO, "DATA: Verarbeite Anfrage...");
         // TODO: impelementieren
 
         if (msgrcv(qid, &msg, MSG_LENGTH1, MSG_TYPE1, 0) < 0) { // naechste Meldung lesen.
