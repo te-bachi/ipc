@@ -2,33 +2,45 @@
 #include <unistd.h>         // sleep()
 #include <signal.h>         // Signal-Funktionen und Signale selbst
 #include <stdlib.h>         // exit()
+#include <sysexits.h>
 
-#include <unistd.h>         // Linux standards
-#include <sys/types.h>      // Linux Typendefinitionen
-#include <sys/ipc.h>        // SVR4 IPC Mechanismen 
-#include <sys/msg.h>        // SVR4 Message Queues 
-
-#include "Utils.h"
 #include "defs.h"
+#include "Utils.h"
+#include "Debug.h"
+#include "Semaphore.h"
+#include "SharedMemory.h"
+#include "MessageQueue.h"
+#include "Exception.h"
 
 void setupSignals();
 void signalHandler(int sig);
 
-void sendSignalHSDataTx(int qid);
-void sendSignalHSDisplay(int qid);
+void sendSignalHSDataTx();
+void sendSignalHSDisplay();
+
+using namespace zhaw::ipc;
+
+Semaphore       *sem    = NULL;
+SharedMemory    *shm    = NULL;
+MessageQueue    *q      = NULL;
 
 int main(int argc, char *argv[]) {
     
-    setDebugLevel(INFO);
+    Debug::setLevel(DEBUG);
     
     setupSignals();
-    debug(INFO, "Control Startup (%d)", getpid());
+    Debug::log(INFO, "Control Startup (%d)", getpid());
     
     close(0); //stdin
 
-    int qidData = msgget(12340, 0777 | IPC_CREAT);
-    int qidDisplay = msgget(12341, 0777 | IPC_CREAT);
-    debug(INFO, "CONTROL: qidData: %i", qidData);
+    try {
+        sem    = new Semaphore(SEM_KEY_FILE, PROJECT_ID);
+        shm    = new SharedMemory(SHM_KEY_FILE, PROJECT_ID);
+        q      = new MessageQueue(MBOX_KEY_FILE, PROJECT_ID);
+    } catch (Exception e) {
+        Debug::log(FATAL, "Catcht Exception!");
+        exit(EX_SOFTWARE);
+    }
 
     /**
      * SControl sendet alle Sekunden eine Message (Type 3333) an HSDisplay
@@ -44,33 +56,33 @@ int main(int argc, char *argv[]) {
             lastMessageHSDataTxSent = true;
 
             // send 3334 HSDataTx
-            debug(INFO, "CONTROL: send message 3334 to HSData");
-            sendSignalHSDataTx(qidData);
+            Debug::log(INFO, "CONTROL: send message 3334 to HSData");
+            sendSignalHSDataTx();
         }
         
         // send 3333 and HSDisplay
-        debug(INFO, "CONTROL: send message 3333 to HSDisplay");
-        sendSignalHSDisplay(qidDisplay);
+        Debug::log(INFO, "CONTROL: send message 3333 to HSDisplay");
+        sendSignalHSDisplay();
     }
     
     return 0;
 }
 
-void sendSignalHSDisplay(int qid) {
+void sendSignalHSDisplay() {
     Message msg;
     msg.msgType = MSG_TYPE;
     // msg.mdata = 0;
 
-    msgsnd(qid, &msg, MSG_LENGTH, 0);
+    q->send(&msg, MSG_LENGTH);
 }
 
-void sendSignalHSDataTx(int qid) {
+void sendSignalHSDataTx() {
     Msg msg;
     msg.msgType = MSG_TYPE1;
     msg.numOfSensors = 0;
     //msg.ctrl = //float ctrl[SENSOR_MAX_NUM]
 
-    msgsnd(qid, &msg, MSG_LENGTH1, 0);
+    q->send(&msg, MSG_LENGTH1);
 }
 
 void setupSignals() {
@@ -94,7 +106,7 @@ void signalHandler(int sigNo) {
            break;
            
        case SIGUSR1:
-           debug(INFO, "Control Shutdown (%d)", getpid());
+           Debug::log(INFO, "Control Shutdown (%d)", getpid());
            exit(0);
            break;
    }

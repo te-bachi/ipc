@@ -2,18 +2,27 @@
 #include <unistd.h>         // sleep()
 #include <signal.h>         // Signal-Funktionen und Signale selbst
 #include <stdlib.h>         // exit(), atoi()
+#include <sysexits.h>
 
+#include "defs.h"
 #include "Utils.h"
+#include "Debug.h"
+#include "Semaphore.h"
+#include "SharedMemory.h"
+#include "MessageQueue.h"
+#include "Exception.h"
 
 void setupSignals();
 void signalHandler(int sig);
 
+using namespace zhaw::ipc;
+
 int main(int argc, char *argv[]) {
     
-    setDebugLevel(INFO);
+    Debug::setLevel(INFO);
     
     setupSignals();
-    debug(INFO, "Display Startup (%d)", getpid());
+    Debug::log(INFO, "Display Startup (%d)", getpid());
     
     close(0); //stdin
     
@@ -45,7 +54,7 @@ void signalHandler(int sigNo) {
            break;
            
        case SIGUSR1:
-           debug(INFO, "Display Shutdown (%d)", getpid());
+           Debug::log(INFO, "Display Shutdown (%d)", getpid());
            exit(0);
            break;
    }
