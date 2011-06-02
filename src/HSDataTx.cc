@@ -7,6 +7,9 @@
 
 #include "Utils.h"
 #include "defs.h"
+#include "Debug.h"
+
+using namespace zhaw::ipc;
 
 int main(int argc, char* argv[]) {
     Msg msg;
@@ -19,7 +22,7 @@ int main(int argc, char* argv[]) {
 
     msgrcv(qid, &msg, MSG_LENGTH1, MSG_TYPE1, 0); // 1. Meldung lesen
     while(true) {
-        debug(INFO, "DATA: Verarbeite Anfrage...");
+        Debug::log(INFO, "DATA: Verarbeite Anfrage...");
         // TODO: impelementieren
 
         if (msgrcv(qid, &msg, MSG_LENGTH1, MSG_TYPE1, 0) < 0) { // naechste Meldung lesen.

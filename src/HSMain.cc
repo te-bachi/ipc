@@ -378,7 +378,9 @@ void *socketRequest(void *param) {
                     sensor.deviceID, sensor.sequenceNr, sensor.valIS, sensor.valREF,
                     sensor.status);
                 // TODO: wechsel, wenn gleiche devId
+                sem->down(0);
                 sensors[sensor.deviceID] = sensor;
+                sem->up(0);
             } else {
                 Debug::log(INFO, "Can't access sensor memory");
             }
