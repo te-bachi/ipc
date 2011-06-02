@@ -8,24 +8,29 @@
 #include <sys/wait.h>       // waitpid()
 #include <errno.h>          // errno
 #include <string.h>         // strerror()
-#include <strings.h>        // bzero()
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <sys/shm.h>
-#include <sys/stat.h>
-#include <fcntl.h>
 
 #include "defs.h"
 #include "Utils.h"
+#include "Debug.h"
+#include "Socket.h"
+#include "ServerSocket.h"
+#include "Semaphore.h"
+#include "SharedMemory.h"
+#include "MessageQueue.h"
+#include "Exception.h"
 
 #define PROG_DISPLAY "./HSDisplay.e"
 #define PROG_CONTROL "./HSControl.e"
 
+using namespace zhaw::ipc;
+
+/******************************************************************************
+ * Funktions Deklaration
+ *****************************************************************************/
+
 // Main Funktionen
 void usage(char *prog);
 void setupSignals();
-void setupSharedMemory();
 void signalHandler(int sigNo);
 void shutdown();
 
@@ -41,17 +46,31 @@ void createControlProcess(pid_t *controlPid, char *nSensors, pid_t displayPid);
 // Funktionen für Socket Thread
 void *socketRequest(void *param);
 
-// Globale Variablen
+/******************************************************************************
+ * Globale Variablen
+ *****************************************************************************/
+
+// Main Variablen
 pthread_t       procThread;
 pthread_t       sockThread;
+
+// Process Thread Variablen
 pid_t           mainPid;
 pid_t           displayPid;
 pid_t           controlPid;
 bool            running;
 pthread_mutex_t runningMutex;
-int             shmId;
-SensorData*     sensors;
+
+// Setup IPC Variablen
 int             anzSensors;
+SensorData*     sensors;
+
+// Anzeigen: ipcs -m
+// Löschen: ipcrm -m <shmid>
+ServerSocket    *server = NULL;
+Semaphore       *sem    = NULL;
+SharedMemory    *shm    = NULL;
+MessageQueue    *q      = NULL;
 
 /******************************************************************************
  * Main Thread
@@ -59,7 +78,7 @@ int             anzSensors;
 
 int main(int argc, char *argv[]) {
     
-    setDebugLevel(INFO);
+    Debug::setLevel(INFO);
     
     // Nicht genug Argumente
     if (argc < 2) {
@@ -82,16 +101,27 @@ int main(int argc, char *argv[]) {
     running = true;
     pthread_mutex_init(&runningMutex, NULL);
     setupSignals();
-    setupSharedMemory();
     
-    pthread_create(&procThread, NULL, processThread, argv[1]);
-    pthread_create(&sockThread, NULL, socketThread, argv[1]);
-    
-    pthread_join(procThread, NULL);
-    pthread_join(sockThread, NULL);
-    
-    debug(INFO, "Exit!");
-    
+    try {
+        int shmLen = 2 * anzSensors * sizeof(SensorData);
+        
+        server = new ServerSocket(COMM_PORT, SENSOR_MAX_NUM);
+        sem    = new Semaphore(SEM_KEY_FILE, PROJECT_ID, 1);
+        shm    = new SharedMemory(SHM_KEY_FILE, PROJECT_ID, shmLen);
+        q      = new MessageQueue(MBOX_KEY_FILE, PROJECT_ID, true);
+            
+        pthread_create(&procThread, NULL, processThread, argv[1]);
+        pthread_create(&sockThread, NULL, socketThread, NULL);
+        
+        pthread_join(procThread, NULL);
+        pthread_join(sockThread, NULL);
+        
+        Debug::log(INFO, "Exit!");
+        
+    } catch (Exception e) {
+        Debug::log(FATAL, "Catcht Exception!");
+        exit(EX_SOFTWARE);
+    }
     return EX_OK;
 }
 
@@ -112,81 +142,66 @@ void setupSignals() {
     sigaction(SIGUSR1, &action, NULL);
 }
 
-/**
- * Anzeigen: ipcs -m
- * Löschen: ipcrm -m <shmid>
- */
-void setupSharedMemory() {
-    int   fd;
-    key_t key;
-    void *shmAddr;
-    size_t size;
-    
-    size = 2 * anzSensors * sizeof(SensorData);
-    
-    if ((fd = open(SHM_KEY_FILE, O_RDWR | O_CREAT, 0770)) >= 0) {
-        close(fd);
-        
-        if ((key = ftok(SHM_KEY_FILE, PROJECT_ID)) != 0) {
-            if ((shmId = shmget(key, size, 0770 | IPC_CREAT)) >= 0) {
-                if ((shmAddr = shmat(shmId, NULL, 0)) != (void *) -1) {
-                    sensors = (SensorData *) shmAddr;
-                } else {
-                    debug(FATAL, "Can't map shared mempory: %s", strerror(errno));
-                }
-            } else {
-                debug(FATAL, "Can't create shared memory: %s", strerror(errno));
-            }
-        } else {
-            debug(FATAL, "Can't convert key: %s", strerror(errno));
-        }
-    } else {
-        debug(FATAL, "Can't open file: %s", strerror(errno));
-    }
-}
-
 void signalHandler(int sigNo) {
     switch (sigNo) {
         case SIGINT:
-            debugNewLine();
-            debug(INFO, "Received interrupt signal (%d)", sigNo);
+            Debug::newLine();
+            Debug::log(INFO, "Received interrupt signal (%d)", sigNo);
             shutdown();
             break;
         
         case SIGTERM:
-            debug(INFO, "Received termination signal (%d)", sigNo);
+            Debug::log(INFO, "Received termination signal (%d)", sigNo);
             shutdown();
             break;
         
         case SIGALRM:
-            debug(INFO, "Received alarm signal (%d)", sigNo);
+            Debug::log(INFO, "Received alarm signal (%d)", sigNo);
             break;
     }
 }
 
 void shutdown() {
     
-    debug(INFO, "Shutdown");
+    Debug::log(INFO, "Shutdown");
     
     pthread_mutex_lock(&runningMutex);
     running = false;
-    
-    if (shmctl(shmId, IPC_RMID, NULL) == -1) {
-        debug(FATAL, "Can't remove shared memory %u: %s", shmId, strerror(errno));
-    }
-    
     pthread_mutex_unlock(&runningMutex);
     
     pthread_cancel(sockThread);
     
-    if (kill(displayPid, SIGUSR1) == -1) {
-        debug(FATAL, "Can't kill Display PID %d: %s", displayPid, strerror(errno));
-    }
-        
-    if (kill(controlPid, SIGUSR1) == -1) {
-        debug(FATAL, "Can't kill Control PID %d: %s", controlPid, strerror(errno));
+    if (server != NULL) {
+        server->close();
+        delete(server);
     }
     
+    if (sem != NULL) {
+        sem->remove();
+        delete(sem);
+    }
+    
+    if (shm != NULL) {
+        shm->remove();
+        delete(shm);
+    }
+    
+    if (q != NULL) {
+        q->remove();
+        delete(q);
+    }
+    
+    if (displayPid != 0) {
+        if (kill(displayPid, SIGUSR1) == -1) {
+            Debug::log(FATAL, "Can't kill Display PID %d: %s", displayPid, strerror(errno));
+        }
+    }
+    
+    if (controlPid != 0) {
+        if (kill(controlPid, SIGUSR1) == -1) {
+            Debug::log(FATAL, "Can't kill Control PID %d: %s", controlPid, strerror(errno));
+        }
+    }
 }
 
 /******************************************************************************
@@ -211,24 +226,24 @@ void *processThread(void *param) {
         pthread_mutex_lock(&runningMutex);
         if (running) {
             if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
-                debug(FATAL, "Status from child %d: Exit!", WEXITSTATUS(status));
+                Debug::log(FATAL, "Status from child %d: Exit!", WEXITSTATUS(status));
                 shutdown();
             } else {
                 if (returnPid == controlPid) {
-                    debug(DEBUG, "Restart HSControl");
+                    Debug::log(DEBUG, "Restart HSControl");
                     if (kill(displayPid, SIGUSR1) == -1) {
-                        debug(FATAL, "Can't kill PID %d", displayPid, strerror(errno));
+                        Debug::log(FATAL, "Can't kill PID %d", displayPid, strerror(errno));
                     }
                     oldDisplayPid = displayPid;
                     createDisplayProcess(&displayPid, nSignals);
                     createControlProcess(&controlPid, nSignals, displayPid);
                 } else if (returnPid == displayPid) {
-                    debug(DEBUG, "Restart HSDisplay");
+                    Debug::log(DEBUG, "Restart HSDisplay");
                     createDisplayProcess(&displayPid, nSignals);
                 } else if (returnPid == oldDisplayPid) {
-                    debug(DEBUG, "Parent catched old Display PID (%d)\n", returnPid);
+                    Debug::log(DEBUG, "Parent catched old Display PID (%d)\n", returnPid);
                 } else {
-                    debug(ERROR, "Unknow child with PID %d\n", returnPid);
+                    Debug::log(ERROR, "Unknow child with PID %d\n", returnPid);
                 }
             }
         }
@@ -238,7 +253,7 @@ void *processThread(void *param) {
         returnPid = waitpid(-1, &status, 0);
     }
     
-    debug(INFO, "Exit Process Thread");
+    Debug::log(INFO, "Exit Process Thread");
     return NULL;
 }
 
@@ -292,14 +307,14 @@ void createProcess(pid_t *pid, const char *path, char *const argv[]) {
     switch (*pid) {
         // Fehler
         case -1:
-            debug(FATAL, "Can't fork: %s\n", strerror(errno));
+            Debug::log(FATAL, "Can't fork: %s\n", strerror(errno));
             shutdown();
             break;
             
         // Kind
         case 0:
             if (execv(path, argv) < 0) {
-                debug(FATAL, "Can't change image: %s", strerror(errno));
+                Debug::log(FATAL, "Can't change image: %s", strerror(errno));
                 exit(EX_OSERR);
             }
             break;
@@ -319,65 +334,17 @@ typedef struct {
 } IntStruct;
 
 void *socketThread(void *param) {
-    int                 listenfd;
-    int                 connectfd;
-    IntStruct           threadConnectFd;
-    struct sockaddr_in  serverAddr;
-    struct sockaddr_in  clientAddr;
-    socklen_t           clientAddrLen;
-    pthread_t           tid;
-    char                clientIp[INET_ADDRSTRLEN];
-    unsigned short      clientPort;
+    Socket    *client;
+    pthread_t  tid;
     
-    struct sigaction action;
-    
-    action.sa_handler = signalHandler;
-    action.sa_flags = 0;
-    sigemptyset(&action.sa_mask);
-    sigaction(SIGALRM, &action, NULL);
-    
-    if ((listenfd = socket(AF_INET, SOCK_STREAM, 0)) >= 0) {
-        bzero(&serverAddr, sizeof(serverAddr));
-        serverAddr.sin_family      = AF_INET;
-        serverAddr.sin_addr.s_addr = htonl(INADDR_ANY);
-        serverAddr.sin_port        = htons(COMM_PORT);
-        
-        if (bind(listenfd, (const struct sockaddr *) &serverAddr, sizeof(serverAddr)) == 0) {
-            if (listen(listenfd, SENSOR_MAX_NUM) == 0) {
-                clientAddrLen = sizeof(clientAddr);
-                while (running) {
-                    if ((connectfd = accept(listenfd, (struct sockaddr *) &clientAddr, &clientAddrLen)) >= 0) {
-                        inet_ntop(AF_INET, &clientAddr.sin_addr, clientIp, sizeof(clientIp));
-                        clientPort = ntohs(clientAddr.sin_port);
-                        debug(INFO, "Accept client %s from port %u", clientIp, clientPort);
-
-                        threadConnectFd.i = connectfd;
-                        pthread_create(&tid, NULL, socketRequest, (void *) &threadConnectFd);
-                    } else if (errno == EWOULDBLOCK) {
-                        
-                    } else {
-                        debug(ERROR, "Can't accept connection: %s", errno, strerror(errno));
-                    }
-                }
-                
-            } else {
-                debug(FATAL, "Can't mark socket as passive (listen-mode): %s", strerror(errno));
-                shutdown();
-            }
-        } else {
-            debug(FATAL, "Can't bind socket: %s", strerror(errno));
-            shutdown();
-        }
-        
-        close(listenfd);
-        
-    } else {
-        debug(FATAL, "Can't create socket: %s", strerror(errno));
-        shutdown();
+    while (running) {
+        client = server->accept();
+        pthread_create(&tid, NULL, socketRequest, (void *) client);
     }
     
     return NULL;
 }
+
 /*
 typedef struct {                // sensor data
     unsigned deviceID;          // sensor ID
@@ -388,32 +355,36 @@ typedef struct {                // sensor data
 } SensorData, *SensorDataPtr;
 */
 void *socketRequest(void *param) {
-    SensorData sensor;
-    int        connectfd;
-    ssize_t    len;
+    Socket     *client;
+    SensorData  sensor;
+    ssize_t     len;
     
-    connectfd = ((IntStruct *) param)->i;
+    client = (Socket *) param;
     
-    len = read(connectfd, (char *)&sensor, sizeof(SensorData));
+    len = client->read((char *)&sensor, sizeof(SensorData));
     if (len >= 0) {
         if (len == sizeof(SensorData)) {
-            debug(INFO, "deviceID=%u sequenceNr=%u valIS=%f valREF=%f status=%d",
+            Debug::log(INFO, "deviceID=%u sequenceNr=%u valIS=%f valREF=%f status=%d",
                 sensor.deviceID, sensor.sequenceNr, sensor.valIS, sensor.valREF,
                 sensor.status);
             
+            // Ist shared memory initialisiert?
             if (sensors >= 0) {
+                
+                // TODO: wechsel, wenn gleiche devId
                 sensors[sensor.deviceID] = sensor;
             } else {
-                debug(INFO, "Can't access sensor memory");
+                Debug::log(INFO, "Can't access sensor memory");
             }
         } else {
-            debug(ERROR, "Size of data read don't match! size=%u", len);
+            Debug::log(ERROR, "Size of data read don't match! size=%u", len);
         }
     } else {
-        debug(ERROR, "Can't read: %s", strerror(errno));
+        Debug::log(ERROR, "Can't read: %s", strerror(errno));
     }
                                             
-    close(connectfd);
+    client->close();
+    delete(client);
     return NULL;
 }
 

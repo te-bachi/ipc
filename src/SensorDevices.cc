@@ -1,7 +1,7 @@
 //******************************************************************************
 // SensorDevices.cc Messtatioen
 // Author:          M. Thaler
-// Date:			3/2011
+// Date:            3/2011
 //******************************************************************************
 
 //******************************************************************************
@@ -39,79 +39,79 @@ int globalK = 0;
 int connToServer(char *hostname, int port);
 
 void SignalHandler(int sig) {
-	printf("\nSensors process receiving termination signal\n");
-	globalK = MAX_ITERATIONS + 1;
+    printf("\nSensors process receiving termination signal\n");
+    globalK = MAX_ITERATIONS + 1;
 }
 
 //***************************************************************************
 
 int numOfSensors(int num) {
-	static int numOfs = 0;
-	if (num > numOfs) {
-		if (num <= SENSOR_MAX_NUM)
-			numOfs = num;
-		else
-			numOfs = -1;
-	}
-	return(numOfs);
+    static int numOfs = 0;
+    if (num > numOfs) {
+        if (num <= SENSOR_MAX_NUM)
+            numOfs = num;
+        else
+            numOfs = -1;
+    }
+    return(numOfs);
 }
 
 //**************************************************************************
 // equally distributed random values in the range low ... high
 
 int intRand(int low, int high) {
-	int	    lp, res;
-	double	lo, hi, dif, ran;
+    int     lp, res;
+    double  lo, hi, dif, ran;
 
-	if (low <= 0)
+    if (low <= 0)
         lp = (-1)*low + 1;
-	else
+    else
         lp = 0;
-	lo  = low + lp - 0.5;
-	hi  = high + lp + 0.499;		// make sure not to round too much
-	dif = hi - lo;
-	ran = random();
-	ran = lo + dif * ran/RAND_MAX;
-	res = (int)(ran + 0.5);
-	res -= lp;
-	if (res > high)
-        res = high;	                // make sure not to round too much
-	if (res < low)
+    lo  = low + lp - 0.5;
+    hi  = high + lp + 0.499;        // make sure not to round too much
+    dif = hi - lo;
+    ran = random();
+    ran = lo + dif * ran/RAND_MAX;
+    res = (int)(ran + 0.5);
+    res -= lp;
+    if (res > high)
+        res = high;                 // make sure not to round too much
+    if (res < low)
             res = low;
-	return res;
+    return res;
 }
 
 //**************************************************************************
 // generate sequence of temp devices
 
 void RandomSequence(int *seq, int number) {
-	static int reservation[2*SENSOR_MAX_NUM];
+    static int reservation[2*SENSOR_MAX_NUM];
     static int firstRun = 1;
     int devCount[SENSOR_MAX_NUM];
 
-	int	idx, i, tmp;
+    int idx, i, tmp;
 
-	if (number > numOfSensors(0)) {
-		printf("sequence: too many devices\n");
-		exit(0);
-	}
+    if (number > numOfSensors(0)) {
+        printf("sequence: too many devices\n");
+        exit(0);
+    }
 
     if (firstRun == 1) {
         firstRun = 0;
         for (i = 0; i < numOfSensors(0); i++)
             devCount[i] = 0;
         idx = 0;
-	    while (idx < number) {
-		    i = intRand(0, number-1);
-		    if (devCount[i] < overlap) {
+        while (idx < number) {
+            i = intRand(0, number-1);
+            if (devCount[i] < overlap) {
                 devCount[i]++;
-			    reservation[idx] = i;
-			    idx++;
-		    }
-	    }
+                reservation[idx] = i;
+                idx++;
+            }
+        }
     }
 
-	for (i = 0; i < number; i++)
+    for (i = 0; i < number; i++)
         devCount[i] = 0;
 
     for (i = 0; i < number; i++) {
@@ -120,28 +120,28 @@ void RandomSequence(int *seq, int number) {
     }
 
     idx = 0;
-	while (idx < number) {
-		i = intRand(0, number-1);
-		if (devCount[i] < 2) {              // if not yet twice in list
+    while (idx < number) {
+        i = intRand(0, number-1);
+        if (devCount[i] < 2) {              // if not yet twice in list
             if (devCount[i] < 1) {          //    if not in list
                 devCount[i]++;
-			    reservation[idx] = i;
-			    idx++;
+                reservation[idx] = i;
+                idx++;
             }
             else {
                 tmp = intRand(0, 9);        //    if in list 
                 if (tmp > 6) {              //        do only for 5%
                     devCount[i]++;
-			        reservation[idx] = i;
-			        idx++;
+                    reservation[idx] = i;
+                    idx++;
                 }
             }
-		}
-	}
+        }
+    }
 
     for (i = 0; i < number; i++) {          
-			*seq = reservation[i+number];
-			seq++;
+            *seq = reservation[i+number];
+            seq++;
     }
 }
 
@@ -152,64 +152,63 @@ void RandomSequence(int *seq, int number) {
 
 int main(int argc, char *argv[]) {
 
-	struct sigaction sig;
+    struct sigaction sig;
 
-    int			StationSeq[SENSOR_MAX_NUM];
+    int         StationSeq[SENSOR_MAX_NUM];
 
-    int 		sfd, maxWait, i, j, rand;
-	int			anzSensors;
-    char		buf[BUF_SIZE];
+    int         sfd, maxWait, i, j, rand;
+    int         anzSensors;
     SensorData  sensor;
-    float		deltaT;
+    float       deltaT;
 
     float       tempPreset[8]  = {20, 45, 30, 20, 15, 10, 15, 20};
     float       startup[8]     = {0, 0, 0, 0, 0, 0, 0, 0};
     int         sequenceNr[8]  = {0, 0, 0, 0, 0, 0, 0, 0};
 
     //*** check for hostname ... a kind of hack
-	
+    
     if (argc < 4)  {
         printf("Need number of devices, hostname or IP address and port number\n");
         exit(-1);
     }
 
-	if ((anzSensors = numOfSensors(atoi(argv[1]))) < 0) {
-		printf("\n*** invalid number of sensor devices ***\n\n");
-		exit(0);
-	}
-	
-	// set up signal handlers
-	sigemptyset(&sig.sa_mask);
-	sig.sa_handler = SignalHandler;
-	sig.sa_flags = 0;
-	sigaction(SIGTERM, &sig, NULL);
-	sigaction(SIGKILL, &sig, NULL);
-	sigaction(SIGINT,  &sig, NULL);
+    if ((anzSensors = numOfSensors(atoi(argv[1]))) < 0) {
+        printf("\n*** invalid number of sensor devices ***\n\n");
+        exit(0);
+    }
+    
+    // set up signal handlers
+    sigemptyset(&sig.sa_mask);
+    sig.sa_handler = SignalHandler;
+    sig.sa_flags = 0;
+    sigaction(SIGTERM, &sig, NULL);
+    sigaction(SIGKILL, &sig, NULL);
+    sigaction(SIGINT,  &sig, NULL);
 
     sleep(2);
-	printf("Sensor device starting up\n");
+    printf("Sensor device starting up\n");
 
     globalK = 0;
     while (globalK < MAX_ITERATIONS) {
  
-	    RandomSequence(StationSeq, anzSensors);
+        RandomSequence(StationSeq, anzSensors);
 
-	    for (i = 0; i <  anzSensors; i++) { 	// for all devices
+        for (i = 0; i <  anzSensors; i++) {     // for all devices
             deltaT = intRand(-2, 2);
             sensor.deviceID   = StationSeq[i];
             sensor.sequenceNr = sequenceNr[sensor.deviceID];
             sensor.valIS      = deltaT + startup[sensor.deviceID];
             sensor.valREF     = tempPreset[sensor.deviceID];
-			sensor.status     = 0;
+            sensor.status     = 0;
 
             sequenceNr[sensor.deviceID]++;
             sfd = connToServer(argv[2], atoi(argv[3]));
-		    write(sfd, (char *)&sensor,sizeof(SensorData));
-		    close(sfd);           
-		    maxWait		= 4000000;
-		    maxWait		= maxWait / anzSensors;
-		    rand		= intRand(maxWait/3, maxWait);
-		    usleep(rand);
+            write(sfd, (char *)&sensor,sizeof(SensorData));
+            close(sfd);           
+            maxWait     = 4000000;
+            maxWait     = maxWait / anzSensors;
+            rand        = intRand(maxWait/3, maxWait);
+            usleep(rand);
         }
         for (j = 0; j < anzSensors; j++) {
             if (startup[j] < tempPreset[j])
@@ -217,7 +216,7 @@ int main(int argc, char *argv[]) {
             else
                 startup[j] = tempPreset[j];
         }
-	    globalK++;
+        globalK++;
     }
     exit(0);
 

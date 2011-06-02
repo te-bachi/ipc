@@ -2,6 +2,16 @@
 CC      = g++
 LD      = g++
 
+SOURCES = Utils.cc \
+          Debug.cc \
+          Socket.cc \
+          ServerSocket.cc \
+          Semaphore.cc \
+          SharedMemory.cc \
+          MessageQueue.cc \
+          Exception.cc
+          
+OBJECTS = $(SOURCES:%.cc=%.o)
 CFLAGS  = -g -Wall
 LDFLAGS = -pthread
 
@@ -11,24 +21,24 @@ all: HSMain.e HSDisplay.e HSControl.e HSDataTx.e SensorDevices.e SensorTest.e
 clean:
 	rm -f *.o *.a *.e
 
-HSMain.e: HSMain.o Utils.o ../src/Utils.h ../src/defs.h
-	$(CC) $(LDFLAGS) -o HSMain.e HSMain.o Utils.o
+HSMain.e: $(OBJECTS) HSMain.o
+	$(CC) $(LDFLAGS) -o HSMain.e HSMain.o $(OBJECTS)
 
-HSDisplay.e: HSDisplay.o Utils.o ../src/Utils.h ../src/defs.h
-	$(CC) -o HSDisplay.e HSDisplay.o Utils.o
+HSDisplay.e: $(OBJECTS) HSDisplay.o
+	$(CC) -o HSDisplay.e HSDisplay.o $(OBJECTS)
 
-HSControl.e: HSControl.o Utils.o ../src/Utils.h ../src/defs.h
-	$(CC) -o HSControl.e HSControl.o Utils.o
+HSControl.e: $(OBJECTS) HSControl.o
+	$(CC) -o HSControl.e HSControl.o $(OBJECTS)
 
-HSDataTx.e: HSDataTx.o Utils.o ../src/Utils.h ../src/defs.h
-	$(CC) -o HSDataTx.e HSDataTx.o Utils.o
+HSDataTx.e: $(OBJECTS) HSDataTx.o
+	$(CC) -o HSDataTx.e HSDataTx.o $(OBJECTS)
 
-SensorDevices.e: SensorDevices.o ../src/defs.h
+SensorDevices.e: SensorDevices.o
 	$(CC) -o SensorDevices.e SensorDevices.o
 
-SensorTest.e: SensorTest.o ../src/defs.h
+SensorTest.e: SensorTest.o
 	$(CC) -o SensorTest.e SensorTest.o
 
 %.o: ../src/%.cc
-	$(CC) -c -o $@ $(CFLAGS) $<
+	$(CC) $(CFLAGS) -c -o $@ $<
 
