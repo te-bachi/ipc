@@ -26,13 +26,12 @@ MessageQueue    *q      = NULL;
 
 int main(int argc, char *argv[]) {
     
+    Debug::setStream(fopen("HSDisplay.log", "a"));
     Debug::setLevel(INFO);
     
     setupSignals();
     Debug::log(INFO, "Display Startup (%d)", getpid());
     
-    close(0); //stdin
-
     try {
         sem    = new Semaphore(SEM_KEY_FILE, PROJECT_ID);
         shm    = new SharedMemory(SHM_KEY_FILE, PROJECT_ID);
