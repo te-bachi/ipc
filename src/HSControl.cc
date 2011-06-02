@@ -3,6 +3,7 @@
 #include <signal.h>         // Signal-Funktionen und Signale selbst
 #include <stdlib.h>         // exit()
 #include <sysexits.h>
+#include <string.h>         // memcpy
 
 #include "defs.h"
 #include "Utils.h"
@@ -23,12 +24,23 @@ using namespace zhaw::ipc;
 Semaphore       *sem    = NULL;
 SharedMemory    *shm    = NULL;
 MessageQueue    *q      = NULL;
+int              sensorCount = 0;
+int              displayPID  = 0;
 
 int main(int argc, char *argv[]) {
     
     Debug::setStream(fopen("HSControl.log", "a"));
     Debug::setLevel(DEBUG);
-    
+
+    if(argc < 3) {
+        printf("call %s sensorCount displayPID\n", argv[0]);
+        return 1;
+    }
+    sensorCount = atoi(argv[1]);
+    displayPID = atoi(argv[2]);
+
+    printf("CONTROL: count %i\n", sensorCount);
+
     setupSignals();
     Debug::log(INFO, "Control Startup (%d)", getpid());
     
@@ -49,6 +61,25 @@ int main(int argc, char *argv[]) {
     bool lastMessageHSDataTxSent = false;
     while (true) {
         sleep(1);
+
+        SensorData * data = (SensorData *)shm->getMemory();
+
+        sem->down(0);
+
+        bool sensorError = false;
+        for(int i = 0; i < sensorCount; i++) {
+            if(data[i].status == -1) {
+                sensorError = true;
+            }
+        }
+
+        sem->up(0);
+
+        if(sensorError) {
+            kill(displayPID, SIGALRM);
+        }
+
+
         if(lastMessageHSDataTxSent) {
             lastMessageHSDataTxSent = false;
         } else {
@@ -70,7 +101,40 @@ int main(int argc, char *argv[]) {
 void sendSignalHSDisplay() {
     Message msg;
     msg.msgType = MSG_TYPE;
-    // msg.mdata = 0;
+
+    SensorData * data = (SensorData *)shm->getMemory();
+
+    sem->down(0);
+
+    float maxDiff = ABS(data[0].valIS - data[0].valREF);
+    float diff;
+    int maxId = 0;
+    float sumDiff = 0;
+
+    for(int i = 0; i < sensorCount; i++) {
+        diff = ABS(data[i].valIS - data[i].valREF);
+        if(diff > maxDiff) {
+            maxDiff = diff;
+            maxId = i;
+        }
+
+        sumDiff += diff;
+    }
+
+    if(sumDiff < -5) {
+        strcpy(msg.mdata.statusText, "+++");
+    } else if(sumDiff > 5) {
+        strcpy(msg.mdata.statusText, "---");
+    } else {
+        strcpy(msg.mdata.statusText, "+/-");
+    }
+
+
+    msg.mdata.sequenceNr = data[maxId].sequenceNr;
+    msg.mdata.deviceID = data[maxId].deviceID;
+    msg.mdata.delta = diff;
+
+    sem->up(0);
 
     q->send(&msg, MSG_LENGTH);
 }
@@ -78,8 +142,18 @@ void sendSignalHSDisplay() {
 void sendSignalHSDataTx() {
     Msg msg;
     msg.msgType = MSG_TYPE1;
-    msg.numOfSensors = 0;
-    //msg.ctrl = //float ctrl[SENSOR_MAX_NUM]
+    msg.numOfSensors = sensorCount;
+
+
+    SensorData * data = (SensorData *)shm->getMemory();
+
+    sem->down(0);
+
+    for(int i = 0; i < sensorCount; i++){
+        msg.ctrl[i] = data[i].valIS;
+    }
+
+    sem->up(0);
 
     q->send(&msg, MSG_LENGTH1);
 }

@@ -23,12 +23,19 @@ using namespace zhaw::ipc;
 Semaphore       *sem    = NULL;
 SharedMemory    *shm    = NULL;
 MessageQueue    *q      = NULL;
+int              sensorCount = 0;
 
 int main(int argc, char *argv[]) {
     
     Debug::setStream(fopen("HSDisplay.log", "a"));
     Debug::setLevel(INFO);
-    
+   
+    if(argc < 2) {
+        printf("call %s sensorCount\n", argv[0]);
+        return 1;
+    }
+    sensorCount = atoi(argv[1]);
+
     setupSignals();
     Debug::log(INFO, "Display Startup (%d)", getpid());
     
@@ -50,6 +57,7 @@ int main(int argc, char *argv[]) {
 		sem->up(0);
 
 		printSensors(tmpData);
+
     }
     
     return 0;
@@ -59,7 +67,7 @@ void printSensors(SensorData * data) {
 	ClearScreen();
 	HomeScreen();
 
-	for(int i = 0; i < SENSOR_MAX_NUM; i++) {
+	for(int i = 0; i < SENSOR_MAX_NUM && i < sensorCount; i++) {
 		printSensor(data[i].deviceID, data[i].sequenceNr, data[i].status, data[i].valIS, data[i].valREF);
 	}
 }

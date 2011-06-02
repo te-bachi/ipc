@@ -17,18 +17,21 @@ int main(int argc, char* argv[]) {
     int qid = msgget(12340, 0777);
     printf("DATA: qid: %i\n", qid);
 
-
     printf("DATA: Warte auf Anfrage...\n");
 
     msgrcv(qid, &msg, MSG_LENGTH1, MSG_TYPE1, 0); // 1. Meldung lesen
     while(true) {
-        Debug::log(INFO, "DATA: Verarbeite Anfrage...");
-        // TODO: impelementieren
-
         if (msgrcv(qid, &msg, MSG_LENGTH1, MSG_TYPE1, 0) < 0) { // naechste Meldung lesen.
             perror("Queue lesen");
             return 1;
         }
+
+	    ClearScreen();
+	    HomeScreen();
+	    for(int i = 0; i < msg.numOfSensors; i++){
+		    printf("Sensor %d: %f\n", i,  msg.ctrl[i]);
+	    }
+
     }
 
     printf("DATA: *** Ende ***\n");

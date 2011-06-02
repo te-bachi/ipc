@@ -28,6 +28,8 @@
 
 #define COMM_PORT 44444         // sensor ports
 
+#define ABS(a)	   (((a) < 0) ? -(a) : (a))
+
 //------------------------------------------------------------------------------
 
 typedef struct {                // sensor data
