@@ -65,8 +65,10 @@ pthread_mutex_t runningMutex;
 int             anzSensors;
 SensorData*     sensors;
 
-// Anzeigen: ipcs -m
-// Löschen: ipcrm -m <shmid>
+// Anzeigen:            ipcs
+// Lösche Semaphore:    ipcrm -s <semid>
+// Lösche SharedMemory: ipcrm -m <shmid>
+// Lösche MessageQueue: ipcrm -q <qid>
 ServerSocket    *server = NULL;
 Semaphore       *sem    = NULL;
 SharedMemory    *shm    = NULL;
@@ -172,21 +174,25 @@ void shutdown() {
     pthread_cancel(sockThread);
     
     if (server != NULL) {
+        Debug::log(INFO, "Close SocketServer and delete it");
         server->close();
         delete(server);
     }
     
     if (sem != NULL) {
+        Debug::log(INFO, "Remove Semaphore and delete it");
         sem->remove();
         delete(sem);
     }
     
     if (shm != NULL) {
+        Debug::log(INFO, "Remove Shared Memory and delete it");
         shm->remove();
         delete(shm);
     }
     
     if (q != NULL) {
+        Debug::log(INFO, "Remove Message Queue and delete it");
         q->remove();
         delete(q);
     }

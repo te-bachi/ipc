@@ -52,7 +52,7 @@ void MessageQueue::init(int fileFlags, mode_t fileMode, int shmFlags) {
             if ((_qId = msgget(key, shmFlags)) >= 0) {
                 return;
             } else {
-                Debug::log(FATAL, "Setup message queue: Can't create semaphore: %s", strerror(errno));
+                Debug::log(FATAL, "Setup message queue: Can't create message queue: %s", strerror(errno));
                 Debug::log(FATAL, "Try 'ipcs' to find out why!");
             }
         } else {
@@ -66,7 +66,7 @@ void MessageQueue::init(int fileFlags, mode_t fileMode, int shmFlags) {
 }
 
 void MessageQueue::remove() {
-    if (_qId > 0) {
+    if (_qId >= 0) {
         msgctl(_qId, IPC_RMID, NULL);
     }
     

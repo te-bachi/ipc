@@ -73,7 +73,7 @@ void SharedMemory::init(int fileFlags, mode_t fileMode, int shmFlags) {
 }
 
 void SharedMemory::remove() {
-    if (_shmId > 0) {
+    if (_shmId >= 0) {
         shmctl(_shmId, IPC_RMID, NULL);
     }
     

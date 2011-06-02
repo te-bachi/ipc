@@ -66,7 +66,7 @@ void Semaphore::init(int fileFlags, mode_t fileMode, int semFlags) {
 }
 
 void Semaphore::remove() {
-    if (_semId > 0) {
+    if (_semId >= 0) {
         semctl(_semId, 0, IPC_RMID);
     }
     

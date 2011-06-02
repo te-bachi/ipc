@@ -26,7 +26,7 @@ MessageQueue    *q      = NULL;
 
 int main(int argc, char *argv[]) {
     
-    Debug::setLevel(FATAL);
+    Debug::setLevel(DEBUG);
     
     setupSignals();
     Debug::log(INFO, "Control Startup (%d)", getpid());
