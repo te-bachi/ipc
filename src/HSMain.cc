@@ -111,6 +111,8 @@ int main(int argc, char *argv[]) {
         sem    = new Semaphore(SEM_KEY_FILE, PROJECT_ID, 1);
         shm    = new SharedMemory(SHM_KEY_FILE, PROJECT_ID, shmLen);
         q      = new MessageQueue(MBOX_KEY_FILE, PROJECT_ID, true);
+
+        sem->up(0);
         
         sensors = (SensorData *) shm->getMemory();
         
