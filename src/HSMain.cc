@@ -80,6 +80,7 @@ MessageQueue    *q      = NULL;
 
 int main(int argc, char *argv[]) {
     
+    Debug::setStream(fopen("HSMain.log", "a"));
     Debug::setLevel(INFO);
     
     // Nicht genug Argumente
@@ -353,15 +354,6 @@ void *socketThread(void *param) {
     return NULL;
 }
 
-/*
-typedef struct {                // sensor data
-    unsigned deviceID;          // sensor ID
-    unsigned sequenceNr;        // sequence number of data
-    float    valIS;             // temperature: measured
-    float    valREF;            // temperature: reference
-    int      status;            // status
-} SensorData, *SensorDataPtr;
-*/
 void *socketRequest(void *param) {
     Socket     *client;
     SensorData  sensor;
@@ -377,7 +369,7 @@ void *socketRequest(void *param) {
                 Debug::log(INFO, "deviceID=%u sequenceNr=%u valIS=%f valREF=%f status=%d",
                     sensor.deviceID, sensor.sequenceNr, sensor.valIS, sensor.valREF,
                     sensor.status);
-                // TODO: wechsel, wenn gleiche devId
+                
                 sem->down(0);
                 sensors[sensor.deviceID] = sensor;
                 sem->up(0);
