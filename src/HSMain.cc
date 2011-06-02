@@ -63,7 +63,7 @@ pthread_mutex_t runningMutex;
 
 // Setup IPC Variablen
 int             anzSensors;
-SensorData*     sensors;
+SensorData     *sensors = NULL;
 
 // Anzeigen:            ipcs
 // Lösche Semaphore:    ipcrm -s <semid>
@@ -105,13 +105,15 @@ int main(int argc, char *argv[]) {
     setupSignals();
     
     try {
-        int shmLen = 2 * anzSensors * sizeof(SensorData);
+        int shmLen = anzSensors * sizeof(SensorData);
         
         server = new ServerSocket(COMM_PORT, SENSOR_MAX_NUM);
         sem    = new Semaphore(SEM_KEY_FILE, PROJECT_ID, 1);
         shm    = new SharedMemory(SHM_KEY_FILE, PROJECT_ID, shmLen);
         q      = new MessageQueue(MBOX_KEY_FILE, PROJECT_ID, true);
-            
+        
+        sensors = (SensorData *) shm->getMemory();
+        
         pthread_create(&procThread, NULL, processThread, argv[1]);
         pthread_create(&sockThread, NULL, socketThread, NULL);
         
@@ -370,13 +372,11 @@ void *socketRequest(void *param) {
     len = client->read((char *)&sensor, sizeof(SensorData));
     if (len >= 0) {
         if (len == sizeof(SensorData)) {
-            Debug::log(INFO, "deviceID=%u sequenceNr=%u valIS=%f valREF=%f status=%d",
-                sensor.deviceID, sensor.sequenceNr, sensor.valIS, sensor.valREF,
-                sensor.status);
-            
             // Ist shared memory initialisiert?
             if (sensors >= 0) {
-                
+                Debug::log(INFO, "deviceID=%u sequenceNr=%u valIS=%f valREF=%f status=%d",
+                    sensor.deviceID, sensor.sequenceNr, sensor.valIS, sensor.valREF,
+                    sensor.status);
                 // TODO: wechsel, wenn gleiche devId
                 sensors[sensor.deviceID] = sensor;
             } else {
