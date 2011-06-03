@@ -53,7 +53,7 @@ void Semaphore::init(int fileFlags, mode_t fileMode, int semFlags) {
                 return;
             } else {
                 Debug::log(FATAL, "Setup semaphore: Can't create semaphore: %s", strerror(errno));
-                Debug::log(FATAL, "Try 'ipcs' to find out why!");
+                Debug::log(FATAL, "Try 'ipcs' to find out why, 'ipcrm -s %d' to remove it!", _semId);
             }
         } else {
             Debug::log(FATAL, "Setup semaphore: Can't convert key: %s", strerror(errno));

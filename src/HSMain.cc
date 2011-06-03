@@ -58,12 +58,15 @@ pthread_t       sockThread;
 pid_t           mainPid;
 pid_t           displayPid;
 pid_t           controlPid;
-bool            running;
-pthread_mutex_t runningMutex;
 
 // Setup IPC Variablen
-int             anzSensors;
-SensorData     *sensors = NULL;
+unsigned       sensorCount        = 0;
+unsigned       sensorLen          = 0;
+SensorData     *sensorLocalCurrent = NULL;
+SensorData     *sensorLocalNext    = NULL;
+SensorData     *sensorShm          = NULL;
+unsigned        seqCurrent         = 0;
+unsigned        seqNext            = 0;
 
 // Anzeigen:            ipcs
 // Lösche Semaphore:    ipcrm -s <semid>
@@ -80,7 +83,6 @@ MessageQueue    *q      = NULL;
 
 int main(int argc, char *argv[]) {
     
-    Debug::setStream(fopen("HSMain.log", "a"));
     Debug::setLevel(INFO);
     
     // Nicht genug Argumente
@@ -94,41 +96,49 @@ int main(int argc, char *argv[]) {
         usage(argv[0]);
     }
     
-    anzSensors = atoi(argv[1]);
+    sensorCount = atoi(argv[1]);
     
-    if (anzSensors > SENSOR_MAX_NUM) {
-        printf("Number of sensors (%d) exceets maximum (%d)!\n", anzSensors, SENSOR_MAX_NUM);
+    if (sensorCount > SENSOR_MAX_NUM) {
+        printf("Number of sensors (%d) exceets maximum (%d)!\n", sensorCount, SENSOR_MAX_NUM);
         usage(argv[0]);
     }
     
-    running = true;
-    pthread_mutex_init(&runningMutex, NULL);
     setupSignals();
     
     try {
-        int shmLen = anzSensors * sizeof(SensorData);
+        sensorLen = sensorCount * sizeof(SensorData);
         
         server = new ServerSocket(COMM_PORT, SENSOR_MAX_NUM);
         sem    = new Semaphore(SEM_KEY_FILE, PROJECT_ID, 1);
-        shm    = new SharedMemory(SHM_KEY_FILE, PROJECT_ID, shmLen);
+        shm    = new SharedMemory(SHM_KEY_FILE, PROJECT_ID, sensorLen);
         q      = new MessageQueue(MBOX_KEY_FILE, PROJECT_ID, true);
-
-        sem->up(0);
         
-        sensors = (SensorData *) shm->getMemory();
+        sensorLocalCurrent = (SensorData *) malloc(sensorLen);
+        sensorLocalNext    = (SensorData *) malloc(sensorLen);
+        sensorShm          = (SensorData *) shm->getMemory();
         
-        pthread_create(&procThread, NULL, processThread, argv[1]);
-        pthread_create(&sockThread, NULL, socketThread, NULL);
-        
-        pthread_join(procThread, NULL);
-        pthread_join(sockThread, NULL);
-        
-        Debug::log(INFO, "Exit!");
+        memset(sensorLocalNext, 0, sensorLen);
+        memset(sensorLocalCurrent, 0, sensorLen);
         
     } catch (Exception e) {
-        Debug::log(FATAL, "Catcht Exception!");
+        Debug::log(FATAL, "Catched Exception!");
         exit(EX_SOFTWARE);
     }
+    
+    Debug::setStream(fopen("HSMain.log", "a"));
+    Debug::log(INFO, "Semaphore Value: %u", sem->getValue(0));
+    
+    sem->up(0);
+    
+    
+    pthread_create(&procThread, NULL, processThread, argv[1]);
+    pthread_create(&sockThread, NULL, socketThread, NULL);
+    
+    pthread_join(procThread, NULL);
+    pthread_join(sockThread, NULL);
+    
+    Debug::log(INFO, "Exit!");
+    
     return EX_OK;
 }
 
@@ -161,10 +171,6 @@ void signalHandler(int sigNo) {
             Debug::log(INFO, "Received termination signal (%d)", sigNo);
             shutdown();
             break;
-        
-        case SIGALRM:
-            Debug::log(INFO, "Received alarm signal (%d)", sigNo);
-            break;
     }
 }
 
@@ -172,11 +178,38 @@ void shutdown() {
     
     Debug::log(INFO, "Shutdown");
     
-    pthread_mutex_lock(&runningMutex);
-    running = false;
-    pthread_mutex_unlock(&runningMutex);
-    
+    pthread_cancel(procThread);
     pthread_cancel(sockThread);
+    
+    mSLEEP(500);
+    
+    if (displayPid != 0) {
+        if (kill(displayPid, SIGUSR1) == -1) {
+            Debug::log(FATAL, "Can't kill Display PID %d: %s", displayPid, strerror(errno));
+        } else {
+            Debug::log(INFO, "Wait for Display PID %d to exit!", displayPid);
+            waitpid(displayPid, NULL, 0);
+        }
+    }
+    
+    if (controlPid != 0) {
+        if (kill(controlPid, SIGUSR1) == -1) {
+            Debug::log(FATAL, "Can't kill Control PID %d: %s", controlPid, strerror(errno));
+        } else {
+            Debug::log(INFO, "Wait for Control PID %d to exit!", controlPid);
+            waitpid(controlPid, NULL, 0);
+        }
+    }
+    
+    if (sensorLocalCurrent != NULL) {
+        Debug::log(INFO, "Delete SensorLocalCurrent array");
+        delete(sensorLocalCurrent);
+    }
+    
+    if (sensorLocalNext != NULL) {
+        Debug::log(INFO, "Delete SensorLocalNext array");
+        delete(sensorLocalNext);
+    }
     
     if (server != NULL) {
         Debug::log(INFO, "Close SocketServer and delete it");
@@ -201,18 +234,6 @@ void shutdown() {
         q->remove();
         delete(q);
     }
-    
-    if (displayPid != 0) {
-        if (kill(displayPid, SIGUSR1) == -1) {
-            Debug::log(FATAL, "Can't kill Display PID %d: %s", displayPid, strerror(errno));
-        }
-    }
-    
-    if (controlPid != 0) {
-        if (kill(controlPid, SIGUSR1) == -1) {
-            Debug::log(FATAL, "Can't kill Control PID %d: %s", controlPid, strerror(errno));
-        }
-    }
 }
 
 /******************************************************************************
@@ -234,32 +255,27 @@ void *processThread(void *param) {
     returnPid = waitpid(-1, &status, 0);
     
     while (returnPid > 0) {
-        pthread_mutex_lock(&runningMutex);
-        if (running) {
-            if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
-                Debug::log(FATAL, "Status from child %d: Exit!", WEXITSTATUS(status));
-                shutdown();
-            } else {
-                if (returnPid == controlPid) {
-                    Debug::log(DEBUG, "Restart HSControl");
-                    if (kill(displayPid, SIGUSR1) == -1) {
-                        Debug::log(FATAL, "Can't kill PID %d", displayPid, strerror(errno));
-                    }
-                    oldDisplayPid = displayPid;
-                    createDisplayProcess(&displayPid, nSignals);
-                    createControlProcess(&controlPid, nSignals, displayPid);
-                } else if (returnPid == displayPid) {
-                    Debug::log(DEBUG, "Restart HSDisplay");
-                    createDisplayProcess(&displayPid, nSignals);
-                } else if (returnPid == oldDisplayPid) {
-                    Debug::log(DEBUG, "Parent catched old Display PID (%d)\n", returnPid);
-                } else {
-                    Debug::log(ERROR, "Unknow child with PID %d\n", returnPid);
+        if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
+            Debug::log(FATAL, "Status from child %d: Exit!", WEXITSTATUS(status));
+            shutdown();
+        } else {
+            if (returnPid == controlPid) {
+                Debug::log(DEBUG, "Restart HSControl");
+                if (kill(displayPid, SIGUSR1) == -1) {
+                    Debug::log(FATAL, "Can't kill PID %d", displayPid, strerror(errno));
                 }
+                oldDisplayPid = displayPid;
+                createDisplayProcess(&displayPid, nSignals);
+                createControlProcess(&controlPid, nSignals, displayPid);
+            } else if (returnPid == displayPid) {
+                Debug::log(DEBUG, "Restart HSDisplay");
+                createDisplayProcess(&displayPid, nSignals);
+            } else if (returnPid == oldDisplayPid) {
+                Debug::log(DEBUG, "Parent catched old Display PID (%d)\n", returnPid);
+            } else {
+                Debug::log(ERROR, "Unknow child with PID %d\n", returnPid);
             }
         }
-        pthread_mutex_unlock(&runningMutex);
-        
         // Warten auf alle Kinder
         returnPid = waitpid(-1, &status, 0);
     }
@@ -348,7 +364,7 @@ void *socketThread(void *param) {
     Socket    *client;
     pthread_t  tid;
     
-    while (running) {
+    while (true) {
         client = server->accept();
         pthread_create(&tid, NULL, socketRequest, (void *) client);
     }
@@ -367,16 +383,31 @@ void *socketRequest(void *param) {
     if (len >= 0) {
         if (len == sizeof(SensorData)) {
             // Ist shared memory initialisiert?
-            if (sensors >= 0) {
+            if (sensorShm >= 0) {
                 Debug::log(INFO, "deviceID=%u sequenceNr=%u valIS=%f valREF=%f status=%d",
                     sensor.deviceID, sensor.sequenceNr, sensor.valIS, sensor.valREF,
                     sensor.status);
                 
                 sem->down(0);
-                sensors[sensor.deviceID] = sensor;
+                
+                if (sensor.sequenceNr == 0) {
+                    seqCurrent = 0;
+                    seqNext    = 1;
+                } else if (sensor.sequenceNr == seqCurrent) {
+                    sensorLocalCurrent[sensor.deviceID] = sensor;
+                } else if (sensor.sequenceNr == seqNext) {
+                    sensorLocalNext[sensor.deviceID] = sensor;
+                } else if (sensor.sequenceNr == seqNext + 1) {
+                    memcpy(sensorShm, sensorLocalCurrent, sensorLen);
+                    memcpy(sensorLocalCurrent, sensorLocalNext, sensorLen);
+                    memset(sensorLocalNext, 0, sensorLen);
+                } else {
+                    Debug::log(ERROR, "Sensor sequence number is out of range");
+                }
+                
                 sem->up(0);
             } else {
-                Debug::log(INFO, "Can't access sensor memory");
+                Debug::log(ERROR, "Can't access sensor memory");
             }
         } else {
             Debug::log(ERROR, "Size of data read don't match! size=%u", len);

@@ -19,7 +19,8 @@ all: HSMain.e HSDisplay.e HSControl.e HSDataTx.e SensorDevices.e SensorTest.e
 	
 
 clean:
-	rm -f *.o *.a *.e
+	rm -f *.o *.a *.e *.log
+	touch HSMain.log
 
 HSMain.e: $(OBJECTS) HSMain.o
 	$(CC) $(LDFLAGS) -o HSMain.e HSMain.o $(OBJECTS)

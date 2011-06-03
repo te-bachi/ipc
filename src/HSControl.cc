@@ -13,6 +13,7 @@
 #include "MessageQueue.h"
 #include "Exception.h"
 
+void usage(char *prog);
 void setupSignals();
 void signalHandler(int sig);
 
@@ -25,34 +26,45 @@ Semaphore       *sem    = NULL;
 SharedMemory    *shm    = NULL;
 MessageQueue    *q      = NULL;
 int              sensorCount = 0;
-int              displayPID  = 0;
+int              displayPid  = 0;
 
 int main(int argc, char *argv[]) {
     
-    Debug::setStream(fopen("HSControl.log", "a"));
-    Debug::setLevel(DEBUG);
-
-    if(argc < 3) {
-        printf("call %s sensorCount displayPID\n", argv[0]);
-        return 1;
+    Debug::setStream(fopen("HSMain.log", "a"));
+    Debug::setLevel(INFO);
+    
+    // Nicht genug Argumente
+    if (argc < 3) {
+        usage(argv[0]);
     }
+    
+    // Argument ist keine Zahl
+    if (!isnumber2(argv[1]) || !isnumber2(argv[2])) {
+        printf("Argument is not a number!\n");
+        usage(argv[0]);
+    }
+    
     sensorCount = atoi(argv[1]);
-    displayPID = atoi(argv[2]);
-
-    printf("CONTROL: count %i\n", sensorCount);
-
+    displayPid = atoi(argv[2]);
+    
+    // Grösser als Maximum? 
+    if (sensorCount > SENSOR_MAX_NUM) {
+        printf("Number of sensors (%d) exceets maximum (%d)!\n", sensorCount, SENSOR_MAX_NUM);
+        usage(argv[0]);
+    }
+    
     setupSignals();
-    Debug::log(INFO, "Control Startup (%d)", getpid());
     
     try {
         sem    = new Semaphore(SEM_KEY_FILE, PROJECT_ID);
         shm    = new SharedMemory(SHM_KEY_FILE, PROJECT_ID);
         q      = new MessageQueue(MBOX_KEY_FILE, PROJECT_ID);
     } catch (Exception e) {
-        Debug::log(FATAL, "Catcht Exception!");
+        Debug::log(FATAL, "Catched Exception!");
         exit(EX_SOFTWARE);
     }
-
+    
+    
     /**
      * SControl sendet alle Sekunden eine Message (Type 3333) an HSDisplay
      * und alle 2 Sekunden eine Message (Type 3334) an HSDataTx.
@@ -76,7 +88,7 @@ int main(int argc, char *argv[]) {
         sem->up(0);
 
         if(sensorError) {
-            kill(displayPID, SIGALRM);
+            kill(displayPid, SIGALRM);
         }
 
 
@@ -86,16 +98,21 @@ int main(int argc, char *argv[]) {
             lastMessageHSDataTxSent = true;
 
             // send 3334 HSDataTx
-            Debug::log(INFO, "CONTROL: send message 3334 to HSData");
+            Debug::log(DEBUG, "CONTROL: send message 3334 to HSData");
             sendSignalHSDataTx();
         }
         
         // send 3333 and HSDisplay
-        Debug::log(INFO, "CONTROL: send message 3333 to HSDisplay");
+        Debug::log(DEBUG, "CONTROL: send message 3333 to HSDisplay");
         sendSignalHSDisplay();
     }
     
     return 0;
+}
+
+void usage(char *prog) {
+    printf("%s <Number of sensors> <Display PID>\n", prog);
+    exit(EX_USAGE);
 }
 
 void sendSignalHSDisplay() {

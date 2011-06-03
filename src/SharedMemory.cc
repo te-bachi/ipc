@@ -60,7 +60,7 @@ void SharedMemory::init(int fileFlags, mode_t fileMode, int shmFlags) {
                 }
             } else {
                 Debug::log(FATAL, "Setup shared memory: Can't create semaphore: %s", strerror(errno));
-                Debug::log(FATAL, "Try 'ipcs' to find out why!");
+                Debug::log(FATAL, "Try 'ipcs' to find out why, 'ipcrm -m %d' to remove it!", _shmId);
             }
         } else {
             Debug::log(FATAL, "Setup shared memory: Can't convert key: %s", strerror(errno));

@@ -53,7 +53,7 @@ void MessageQueue::init(int fileFlags, mode_t fileMode, int shmFlags) {
                 return;
             } else {
                 Debug::log(FATAL, "Setup message queue: Can't create message queue: %s", strerror(errno));
-                Debug::log(FATAL, "Try 'ipcs' to find out why!");
+                Debug::log(FATAL, "Try 'ipcs' to find out why, 'ipcrm -q %d' to remove it!", _qId);
             }
         } else {
             Debug::log(FATAL, "Setup message queue: Can't convert key: %s", strerror(errno));

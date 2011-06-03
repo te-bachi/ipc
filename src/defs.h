@@ -9,8 +9,8 @@
 
 //------------------------------------------------------------------------------
 
-#define PGROUP      "MyName"
-#define PGROUPNR    0
+#define PGROUP      "bachman0 & buttiand"
+#define PGROUPNR    7
 
 // fflush requires stdio.h
 #include <stdio.h>

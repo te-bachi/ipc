@@ -148,7 +148,7 @@ void calculate (int qid, int arg1, int arg2, char op, int lauf){
     
    printf ("CLIENT: warte auf Antwort...\n");
    
-   msgrcv (qid, &recvbuf, LEN_ANS, ANSWER, 0);  // Auf Resultat als Meldung warten
+   msgrcv (qid, &recvbuf, LEN_ANS, 666, 0);  // Auf Resultat als Meldung warten
    
    printf ("CLIENT: Das Ergebnis lautet: %ld\n", recvbuf.result); 
 }                                               // Resultat ausgeben.
@@ -164,7 +164,7 @@ void kind_prozess (int qid){
 
    printf ("SERVER: Warte auf Anfrage...\n");
    
-   msgrcv (qid, &recvbuf, LEN_REQ, REQUEST, 0); // 1. Meldung lesen
+   msgrcv (qid, &recvbuf, LEN_REQ, 999, 0); // 1. Meldung lesen
    while (recvbuf.op != ENDE)   {
       printf ("SERVER: Verarbeite Anfrage...\n");
       sendbuf.result = 0; 
