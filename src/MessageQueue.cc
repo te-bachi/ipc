@@ -79,7 +79,7 @@ void MessageQueue::send(void *msg, size_t count) {
     msgsnd(_qId, msg, count, 0);
 }
 
-void MessageQueue::receive(void *msg, size_t count, long type) {
+ssize_t MessageQueue::receive(void *msg, size_t count, long type) {
     msgrcv(_qId, msg, count, type, 0);
 }
 

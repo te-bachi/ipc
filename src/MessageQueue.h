@@ -1,6 +1,8 @@
 #ifndef __MESSAGE_QUEUE_H__
 #define __MESSAGE_QUEUE_H__
 
+#include <sys/msg.h>
+
 namespace zhaw {
     namespace ipc {
         
@@ -20,7 +22,7 @@ namespace zhaw {
                 ~MessageQueue();
                 void remove();
                 void send(void *msg, size_t count);
-                void receive(void *msg, size_t count, long type);
+                ssize_t receive(void *msg, size_t count, long type);
         };
     };
 };

@@ -4,24 +4,33 @@
 #include <sys/types.h>      // Linux Typendefinitionen
 #include <sys/ipc.h>        // SVR4 IPC Mechanismen 
 #include <sys/msg.h>        // SVR4 Message Queues 
+#include <stdlib.h>         // exit()
 
 #include "Utils.h"
 #include "defs.h"
 #include "Debug.h"
+#include "MessageQueue.h"
+#include "Exception.h"
 
 using namespace zhaw::ipc;
+
+MessageQueue    *q      = NULL;
 
 int main(int argc, char* argv[]) {
     Msg msg;
 
-    int qid = msgget(12340, 0777);
-    printf("DATA: qid: %i\n", qid);
+    try {
+        q      = new MessageQueue(MBOX_KEY_FILE, PROJECT_ID);
+    } catch (Exception e) {
+        Debug::log(FATAL, "Catcht Exception!");
+        exit(-1);
+    }
 
     printf("DATA: Warte auf Anfrage...\n");
 
-    msgrcv(qid, &msg, MSG_LENGTH1, MSG_TYPE1, 0); // 1. Meldung lesen
+    q->receive(&msg, MSG_LENGTH1, MSG_TYPE1); // 1. Meldung lesen
     while(true) {
-        if (msgrcv(qid, &msg, MSG_LENGTH1, MSG_TYPE1, 0) < 0) { // naechste Meldung lesen.
+        if (q->receive(&msg, MSG_LENGTH1, MSG_TYPE1) < 0) { // naechste Meldung lesen.
             perror("Queue lesen");
             return 1;
         }
