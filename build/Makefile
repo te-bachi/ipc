@@ -26,7 +26,7 @@ HSMain.e: $(OBJECTS) HSMain.o
 	$(CC) $(LDFLAGS) -o HSMain.e HSMain.o $(OBJECTS)
 
 HSDisplay.e: $(OBJECTS) HSDisplay.o
-	$(CC) -o HSDisplay.e HSDisplay.o $(OBJECTS)
+	$(CC) $(LDFLAGS) -o HSDisplay.e HSDisplay.o $(OBJECTS)
 
 HSControl.e: $(OBJECTS) HSControl.o
 	$(CC) -o HSControl.e HSControl.o $(OBJECTS)
