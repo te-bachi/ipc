@@ -153,7 +153,6 @@ void setupSignals() {
     action.sa_handler = signalHandler;
     action.sa_flags = SA_RESTART;
     sigemptyset(&action.sa_mask);
-    sigaction(SIGALRM, &action, NULL);
     sigaction(SIGINT, &action, NULL);
     sigaction(SIGTERM, &action, NULL);
     sigaction(SIGUSR1, &action, NULL);

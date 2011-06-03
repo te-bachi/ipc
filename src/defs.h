@@ -9,7 +9,7 @@
 
 //------------------------------------------------------------------------------
 
-#define PGROUP      "bachman0 & buttiand"
+#define PGROUP      "bachman0, buttiand"
 #define PGROUPNR    7
 
 // fflush requires stdio.h

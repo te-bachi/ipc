@@ -4,6 +4,7 @@
 #include <stdlib.h>         // exit()
 #include <sysexits.h>
 #include <string.h>         // memcpy
+#include <pthread.h>        // Pthreads
 
 #include "defs.h"
 #include "Utils.h"
@@ -13,9 +14,13 @@
 #include "MessageQueue.h"
 #include "Exception.h"
 
+// Max. alarmCount = (2 sec) / (0.5 1/sec) = 4
+#define ALARM_COUNT_MAX 4
+
 void usage(char *prog);
 void setupSignals();
 void signalHandler(int sig);
+void *messageThread(void *);
 void mainLoop();
 void printSensors(SensorData * sharedMemory);
 void printSensor(unsigned device, unsigned sequence, int status, float valIS, float valREF);
@@ -26,17 +31,17 @@ Semaphore       *sem    = NULL;
 SharedMemory    *shm    = NULL;
 MessageQueue    *q      = NULL;
 int              sensorCount = 0;
+MessageData      messageData;
 
-// Max. alarmCount = (2 sec) / (0.5 1/sec) = 4
-#define          ALARM_COUNT_MAX 4
+pthread_t        msgThread;
 int              alarmCount = 0;
 bool             isAlarm    = false;
+pthread_mutex_t  msgMutex = PTHREAD_MUTEX_INITIALIZER;
 
 int main(int argc, char *argv[]) {
     
     Debug::setStream(fopen("HSMain.log", "a"));
     Debug::setLevel(INFO);
-   
     
     // Nicht genug Argumente
     if (argc < 2) {
@@ -56,7 +61,7 @@ int main(int argc, char *argv[]) {
         printf("Number of sensors (%d) exceets maximum (%d)!\n", sensorCount, SENSOR_MAX_NUM);
         usage(argv[0]);
     }
-
+    
     setupSignals();
     Debug::log(INFO, "Display Startup (%d)", getpid());
     
@@ -64,11 +69,15 @@ int main(int argc, char *argv[]) {
         sem    = new Semaphore(SEM_KEY_FILE, PROJECT_ID);
         shm    = new SharedMemory(SHM_KEY_FILE, PROJECT_ID);
         q      = new MessageQueue(MBOX_KEY_FILE, PROJECT_ID);
+        
+        memset(&messageData, 0, sizeof(MessageData));
+        
     } catch (Exception e) {
         Debug::log(FATAL, "Catched Exception!");
         exit(EX_SOFTWARE);
     }
     
+    pthread_create(&msgThread, NULL, messageThread, NULL);
     mainLoop();
     
     return 0;
@@ -88,6 +97,7 @@ void setupSignals() {
    sigaction(SIGINT, &action, NULL);
    sigaction(SIGTERM, &action, NULL);
    sigaction(SIGUSR1, &action, NULL);
+   sigaction(SIGALRM, &action, NULL);
 }
 
 void signalHandler(int sigNo) {
@@ -105,6 +115,18 @@ void signalHandler(int sigNo) {
            alarmCount = 0;
            break;
    }
+}
+
+void *messageThread(void *) {
+    Message msg;
+    while (true) {
+        q->receive(&msg, MSG_LENGTH, MSG_TYPE);
+        pthread_mutex_lock(&msgMutex);
+        memcpy(&messageData, &msg.mdata, sizeof(MessageData));
+        pthread_mutex_unlock(&msgMutex);
+    }
+    
+    return NULL;
 }
 
 void mainLoop() {
@@ -125,12 +147,11 @@ void mainLoop() {
 }
 
 void printSensors(SensorData *data) {
-    int i;
+    MessageData msgData;
+    int         i;
     
     ClearScreen();
     HomeScreen();
-    
-    printf("%d) %s - %s", PGROUPNR, PGROUP, COMPANY);
     
     if (isAlarm) {
         printf("--- Control Alarm ---\n");
@@ -145,6 +166,15 @@ void printSensors(SensorData *data) {
     for(i = 0; i < sensorCount; i++) {
         printSensor(data[i].deviceID, data[i].sequenceNr, data[i].status, data[i].valIS, data[i].valREF);
     }
+    
+    pthread_mutex_lock(&msgMutex);
+    memcpy(&msgData, &messageData, sizeof(MessageData));
+    pthread_mutex_unlock(&msgMutex);
+    
+    printf("sequence number        %d\n", msgData.sequenceNr);
+    printf("max diff @ device %d    %3.2f\n", msgData.deviceID, msgData.delta);
+    printf("status                 %s\n", msgData.statusText);
+    
 }
 
 void printSensor(unsigned device, unsigned sequence, int status, float valIS, float valREF) {
