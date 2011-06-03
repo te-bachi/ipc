@@ -1,22 +1,95 @@
 #include <stdio.h>
 #include <unistd.h>         // sleep()
 #include <signal.h>         // Signal-Funktionen und Signale selbst
-#include <stdlib.h>         // exit(), atoi()
+#include <stdlib.h>         // exit()
+#include <sysexits.h>
+#include <string.h>         // memcpy
 
+#include "defs.h"
 #include "Utils.h"
+#include "Debug.h"
+#include "Semaphore.h"
+#include "SharedMemory.h"
+#include "MessageQueue.h"
+#include "Exception.h"
 
 void setupSignals();
 void signalHandler(int sig);
+void printSensors(SensorData * sharedMemory);
+void printSensor(unsigned device, unsigned sequence, int status, float valIS, float valREF);
+
+using namespace zhaw::ipc;
+
+Semaphore       *sem    = NULL;
+SharedMemory    *shm    = NULL;
+MessageQueue    *q      = NULL;
+int              sensorCount = 0;
 
 int main(int argc, char *argv[]) {
     
-    setDebugLevel(INFO);
-    
+    Debug::setStream(fopen("HSDisplay.log", "a"));
+    Debug::setLevel(INFO);
+   
+    if(argc < 2) {
+        printf("call %s sensorCount\n", argv[0]);
+        return 1;
+    }
+    sensorCount = atoi(argv[1]);
+
     setupSignals();
-    debug(INFO, "Display (%d)", getpid());
-    sleep(2);
+    Debug::log(INFO, "Display Startup (%d)", getpid());
+    
+    try {
+        sem    = new Semaphore(SEM_KEY_FILE, PROJECT_ID);
+        shm    = new SharedMemory(SHM_KEY_FILE, PROJECT_ID);
+        q      = new MessageQueue(MBOX_KEY_FILE, PROJECT_ID);
+    } catch (Exception e) {
+        Debug::log(FATAL, "Catcht Exception!");
+        exit(EX_SOFTWARE);
+    }
+
+
+    SensorData tmpData[SENSOR_MAX_NUM];
+    while(true) {
+        mSLEEP(500);
+		sem->down(0);
+		memcpy(tmpData, shm->getMemory(), sizeof(SensorData) * SENSOR_MAX_NUM);
+		sem->up(0);
+
+		printSensors(tmpData);
+
+    }
     
     return 0;
+}
+
+void printSensors(SensorData * data) {
+	ClearScreen();
+	HomeScreen();
+
+	for(int i = 0; i < SENSOR_MAX_NUM && i < sensorCount; i++) {
+		printSensor(data[i].deviceID, data[i].sequenceNr, data[i].status, data[i].valIS, data[i].valREF);
+	}
+}
+
+void printSensor(unsigned device, unsigned sequence, int status, float valIS, float valREF) {
+    printf("Device %i @ %i: %i V act  ", device, sequence, status);
+
+    if(valIS < 0) {
+        printf("-");
+	}
+
+    for(int i = 0; i < valIS; i++) {
+        printf(".");
+    }
+
+	printf("\n");
+
+	printf("                V ref  ");
+	for (int i = 0; i < valREF; i++){
+	    printf("-");
+	}
+	printf("\n");
 }
 
 void setupSignals() {
@@ -31,7 +104,6 @@ void setupSignals() {
 }
 
 void signalHandler(int sigNo) {
-   
    switch (sigNo) {
        case SIGINT:
            break;
@@ -40,7 +112,7 @@ void signalHandler(int sigNo) {
            break;
            
        case SIGUSR1:
-           debug(DEBUG, "Display Shutdown (%d)", getpid());
+           Debug::log(INFO, "Display Shutdown (%d)", getpid());
            exit(0);
            break;
    }
