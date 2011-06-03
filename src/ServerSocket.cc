@@ -51,7 +51,7 @@ Socket *ServerSocket::accept() {
     if ((connectfd = ssa(_fd, (struct sockaddr *) &clientAddr, &clientAddrLen)) >= 0) {
         inet_ntop(AF_INET, &clientAddr.sin_addr, clientIp, sizeof(clientIp));
         clientPort = ntohs(clientAddr.sin_port);
-        Debug::log(INFO, "Accept client %s from port %u", clientIp, clientPort);
+        Debug::log(DEBUG, "Accept client %s from port %u", clientIp, clientPort);
         
         return new Socket(connectfd);
     } else {

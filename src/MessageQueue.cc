@@ -80,6 +80,6 @@ void MessageQueue::send(void *msg, size_t count) {
 }
 
 ssize_t MessageQueue::receive(void *msg, size_t count, long type) {
-    msgrcv(_qId, msg, count, type, 0);
+    return msgrcv(_qId, msg, count, type, 0);
 }
 

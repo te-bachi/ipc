@@ -148,7 +148,7 @@ void printSensors(SensorData *data) {
 }
 
 void printSensor(unsigned device, unsigned sequence, int status, float valIS, float valREF) {
-    printf("Device %i @ %i: %i V act  ", device, sequence, status);
+    printf("Device %i @ %3i: %i V act  ", device, sequence, status);
 
     if(valIS < 0) {
         printf("-");
@@ -160,7 +160,7 @@ void printSensor(unsigned device, unsigned sequence, int status, float valIS, fl
 
     printf("\n");
 
-    printf("                V ref  ");
+    printf("                  V ref  ");
     for (int i = 0; i < valREF; i++){
         printf("-");
     }

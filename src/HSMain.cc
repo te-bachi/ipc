@@ -393,6 +393,8 @@ void *socketRequest(void *param) {
                 if (sensor.sequenceNr == 0) {
                     seqCurrent = 0;
                     seqNext    = 1;
+                    
+                    sensorLocalCurrent[sensor.deviceID] = sensor;
                 } else if (sensor.sequenceNr == seqCurrent) {
                     sensorLocalCurrent[sensor.deviceID] = sensor;
                 } else if (sensor.sequenceNr == seqNext) {
@@ -401,6 +403,11 @@ void *socketRequest(void *param) {
                     memcpy(sensorShm, sensorLocalCurrent, sensorLen);
                     memcpy(sensorLocalCurrent, sensorLocalNext, sensorLen);
                     memset(sensorLocalNext, 0, sensorLen);
+                    
+                    seqCurrent++;
+                    seqNext++;
+                    
+                    sensorLocalNext[sensor.deviceID] = sensor;
                 } else {
                     Debug::log(ERROR, "Sensor sequence number is out of range");
                 }
